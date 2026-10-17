@@ -15,6 +15,7 @@ import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
 import { AutoModeDock } from "./AutoModeDock";
 import { StudioViewport } from "./StudioViewport";
+import { CanvasCoachPill, UserManualModal } from "./UserManualModal";
 
 type ExportBundlePreview = {
   id: string;
@@ -117,6 +118,7 @@ export function StudioApp() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportTab, setExportTab] = useState<"unity" | "spine" | "sheet">("unity");
   const [showPartCutterModal, setShowPartCutterModal] = useState(false);
+  const [showUserManual, setShowUserManual] = useState(false);
   const [cutterStatus, setCutterStatus] = useState<string>("");
   const [saveBadge, setSaveBadge] = useState<string>("Saved");
 
@@ -172,6 +174,8 @@ export function StudioApp() {
       else if (key === "w") setMode("liquify");
       else if (e.key === "[") setBrushRadius(Math.max(15, brushRadius - 10));
       else if (e.key === "]") setBrushRadius(Math.min(180, brushRadius + 10));
+      else if (e.key === "?" || e.key === "/") setShowUserManual((v) => !v);
+      else if (e.key === "Escape") setShowUserManual(false);
       else if (e.key === " ") {
         e.preventDefault();
         setIsPlaying(!isPlaying);
@@ -512,6 +516,13 @@ export function StudioApp() {
               }`}
             >
               AI Copilot
+            </button>
+            <button
+              onClick={() => setShowUserManual(true)}
+              title="Open Interactive User Manual & Guided Tour (?)"
+              className="whitespace-nowrap shrink-0 px-3 py-1.5 rounded-full liquid-glass-button text-xs font-bold text-amber-200 hover:text-white"
+            >
+              ? Guide
             </button>
           </div>
         </header>
@@ -950,6 +961,9 @@ export function StudioApp() {
           </div>
         </div>
 
+        {/* Live Contextual Canvas Coach Pill */}
+        <CanvasCoachPill onOpenManual={() => setShowUserManual(true)} />
+
         {/* BOTTOM ROW: Photoshop Video Timeline, Unity AnimationEvents & Keyframe Dope Sheet Dock */}
         <footer
           className={`pointer-events-auto rounded-[28px] liquid-glass transition-all duration-300 flex flex-col overflow-hidden shrink-0 ${
@@ -1253,6 +1267,13 @@ export function StudioApp() {
           </div>
         </div>
       )}
+
+      {/* 5. Interactive User Manual & Step-by-Step Guided Tour Modal */}
+      <UserManualModal
+        isOpen={showUserManual}
+        onClose={() => setShowUserManual(false)}
+        onTriggerExport={handleRunExport}
+      />
     </div>
   );
 }

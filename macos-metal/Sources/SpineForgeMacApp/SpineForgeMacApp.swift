@@ -107,6 +107,7 @@ public final class MacStudioViewModel: ObservableObject {
     @Published public var outlinerTab: OutlinerTab = .layers
     @Published public var dopeSheetExpanded: Bool = false
     @Published public var showAiCopilot: Bool = true
+    @Published public var showUserManualSheet: Bool = false
     @Published public var aiProvider: AiProvider = .cursor
     @Published public var aiPrompt: String = ""
     @Published public var aiMessages: [AiChatEntry] = [
@@ -778,6 +779,11 @@ public struct SpineForgeMainStudioView: View {
                     Toggle("AI Copilot", isOn: $vm.showAiCopilot)
                         .toggleStyle(.button)
                         .controlSize(.small)
+
+                    Button("? Guide") {
+                        vm.showUserManualSheet = true
+                    }
+                    .controlSize(.small)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -1177,6 +1183,92 @@ public struct SpineForgeMainStudioView: View {
                 .liquidGlass(cornerRadius: 28, isPill: !vm.dopeSheetExpanded)
             }
             .padding(14)
+
+            if vm.showUserManualSheet {
+                ZStack {
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                        .onTapGesture { vm.showUserManualSheet = false }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("INTERACTIVE USER MANUAL & QUICK-START TOUR")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.cyan)
+                                Text("How to Use Kinetic Pro — From Artwork to Unity in 3 Clicks")
+                                    .font(.system(size: 18, weight: .bold))
+                            }
+                            Spacer()
+                            Button("Close Guide") { vm.showUserManualSheet = false }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.cyan)
+                        }
+
+                        Divider()
+
+                        HStack(spacing: 14) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Step 1 · 1-Click Auto-Rig")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.cyan)
+                                Text("Click '1-Click Auto-Rig' to detect pose landmarks via Apple Vision, build high-density Delaunay meshes, solve 4-bone weights on the Metal GPU, and synthesize all 14 animations.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Button("▶ Run Auto-Rig Now") {
+                                    vm.runAppleVisionAutoRig()
+                                    vm.showUserManualSheet = false
+                                }
+                                .controlSize(.small)
+                            }
+                            .padding(12)
+                            .background(Color.black.opacity(0.3))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Step 2 · Photoshop Tools (V, P, M, B)")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.yellow)
+                                Text("Use V (Free Transform Pose), P (Bone Pin), M (Puppet Delaunay Mesh), and B (GPU Weight Brush) on the left tool rail, or ask the AI Copilot on the extreme right.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Button("▶ Try GPU Weight Brush") {
+                                    vm.mode = .weights
+                                    vm.showUserManualSheet = false
+                                }
+                                .controlSize(.small)
+                            }
+                            .padding(12)
+                            .background(Color.black.opacity(0.3))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Step 3 · Export 3-Way Unity Bundle")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.green)
+                                Text("Click 'Export Unity' (⌘E) to output .sfrig.json (Zero-Dependency Unity C# Runtime), .spine.json + .atlas.txt (Spine 4.2), and Metal-baked flipbook sprite sheets.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Button("▶ Export Unity Bundle") {
+                                    vm.showUserManualSheet = false
+                                    vm.bakeAndExportOnMetal(revealInFinder: true)
+                                }
+                                .controlSize(.small)
+                            }
+                            .padding(12)
+                            .background(Color.black.opacity(0.3))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                        }
+
+                        Text("Full documentation available at /Users/amit.tayal/Kinetic/USER_MANUAL.md")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.cyan)
+                    }
+                    .padding(24)
+                    .frame(width: 860)
+                    .liquidGlass(cornerRadius: 32)
+                }
+            }
         }
         .frame(minWidth: 1280, minHeight: 800)
         .preferredColorScheme(.dark)
