@@ -717,9 +717,12 @@ public struct SpineForgeMainStudioView: View {
                 // MIDDLE WORKSPACE ROW:
                 // [Left Photoshop Tool Rail (Import PSD above Auto) + Contextual Tool Options Pane] | [Canvas] | [Right-Center Layers/Bones] | [Extreme-Right AI Copilot]
                 HStack(alignment: .top, spacing: 12) {
-                    // 1. Far-Left Single-Column Photoshop Tool Rail (Import PSD at top above Auto)
-                    VStack(spacing: 7) {
-                        Button(action: { vm.mode = .importPsd }) {
+                    // 1. Far-Left Unified 2-Column Photoshop Tool Palette (All tools & view overlays share the same icon+button style)
+                    LazyVGrid(columns: [GridItem(.fixed(42), spacing: 6), GridItem(.fixed(42), spacing: 6)], spacing: 6) {
+                        Button(action: {
+                            if vm.mode == .importPsd && vm.leftPaneOpen { vm.leftPaneOpen = false }
+                            else { vm.mode = .importPsd; vm.leftPaneOpen = true }
+                        }) {
                             VStack(spacing: 1) {
                                 Image(systemName: "square.and.arrow.down.fill")
                                 Text("PSD").font(.system(size: 8.5, weight: .bold))
@@ -727,9 +730,12 @@ public struct SpineForgeMainStudioView: View {
                             .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(vm.mode == .importPsd ? .cyan : .blue.opacity(0.35))
+                        .tint(vm.mode == .importPsd && vm.leftPaneOpen ? .cyan : .blue.opacity(0.35))
 
-                        Button(action: { vm.mode = .autoStudio }) {
+                        Button(action: {
+                            if vm.mode == .autoStudio && vm.leftPaneOpen { vm.leftPaneOpen = false }
+                            else { vm.mode = .autoStudio; vm.leftPaneOpen = true }
+                        }) {
                             VStack(spacing: 1) {
                                 Image(systemName: "wand.and.stars")
                                 Text("Auto").font(.system(size: 8.5, weight: .bold))
@@ -737,37 +743,46 @@ public struct SpineForgeMainStudioView: View {
                             .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(vm.mode == .autoStudio ? .cyan : .gray.opacity(0.3))
+                        .tint(vm.mode == .autoStudio && vm.leftPaneOpen ? .cyan : .gray.opacity(0.3))
 
-                        Button(action: { vm.mode = .animate }) {
+                        Button(action: {
+                            if vm.mode == .animate && vm.leftPaneOpen { vm.leftPaneOpen = false }
+                            else { vm.mode = .animate; vm.leftPaneOpen = true }
+                        }) {
                             VStack(spacing: 1) {
                                 Image(systemName: "cursorarrow.motionlines")
-                                Text("V").font(.system(size: 9, weight: .bold))
+                                Text("Pose V").font(.system(size: 8, weight: .bold))
                             }
                             .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(vm.mode == .animate ? .cyan : .gray.opacity(0.3))
+                        .tint(vm.mode == .animate && vm.leftPaneOpen ? .cyan : .gray.opacity(0.3))
 
-                        Button(action: { vm.mode = .rig }) {
+                        Button(action: {
+                            if vm.mode == .rig && vm.leftPaneOpen { vm.leftPaneOpen = false }
+                            else { vm.mode = .rig; vm.leftPaneOpen = true }
+                        }) {
                             VStack(spacing: 1) {
                                 Image(systemName: "pin.fill")
-                                Text("P").font(.system(size: 9, weight: .bold))
+                                Text("Rig P").font(.system(size: 8, weight: .bold))
                             }
                             .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(vm.mode == .rig ? .cyan : .gray.opacity(0.3))
+                        .tint(vm.mode == .rig && vm.leftPaneOpen ? .cyan : .gray.opacity(0.3))
 
-                        Button(action: { vm.mode = .mesh }) {
+                        Button(action: {
+                            if vm.mode == .mesh && vm.leftPaneOpen { vm.leftPaneOpen = false }
+                            else { vm.mode = .mesh; vm.leftPaneOpen = true }
+                        }) {
                             VStack(spacing: 1) {
                                 Image(systemName: "triangle")
-                                Text("M").font(.system(size: 9, weight: .bold))
+                                Text("Mesh M").font(.system(size: 8, weight: .bold))
                             }
                             .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(vm.mode == .mesh ? .cyan : .gray.opacity(0.3))
+                        .tint(vm.mode == .mesh && vm.leftPaneOpen ? .cyan : .gray.opacity(0.3))
 
                         Button(action: {
                             if vm.mode == .weights && vm.leftPaneOpen { vm.leftPaneOpen = false }
@@ -775,7 +790,7 @@ public struct SpineForgeMainStudioView: View {
                         }) {
                             VStack(spacing: 1) {
                                 Image(systemName: "paintbrush.pointed.fill")
-                                Text("B").font(.system(size: 9, weight: .bold))
+                                Text("Brush B").font(.system(size: 8, weight: .bold))
                             }
                             .frame(width: 40, height: 38)
                         }
@@ -808,43 +823,70 @@ public struct SpineForgeMainStudioView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(vm.showAiCopilot ? .purple : .gray.opacity(0.3))
 
-                        Divider().frame(width: 28)
-
-                        HStack(spacing: 3) {
-                            Button(action: { vm.undo() }) {
-                                Text("↶")
-                                    .font(.system(size: 11, weight: .bold))
+                        Button(action: { vm.undo() }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "arrow.uturn.backward")
+                                Text("Undo").font(.system(size: 8, weight: .bold))
                             }
-                            .disabled(vm.historyIndex <= 0)
-                            .controlSize(.mini)
-                            .help("Undo (⌘Z)")
-
-                            Button(action: { vm.redo() }) {
-                                Text("↷")
-                                    .font(.system(size: 11, weight: .bold))
-                            }
-                            .disabled(vm.historyIndex >= vm.history.count - 1)
-                            .controlSize(.mini)
-                            .help("Redo (⇧⌘Z)")
+                            .frame(width: 40, height: 38)
                         }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.gray.opacity(0.3))
+                        .disabled(vm.historyIndex <= 0)
 
-                        Divider().frame(width: 28)
+                        Button(action: { vm.redo() }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "arrow.uturn.forward")
+                                Text("Redo").font(.system(size: 8, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.gray.opacity(0.3))
+                        .disabled(vm.historyIndex >= vm.history.count - 1)
 
-                        Toggle("Bones", isOn: $vm.showBones)
-                            .toggleStyle(.button)
-                            .controlSize(.mini)
-                        Toggle("Grid", isOn: $vm.showWireframe)
-                            .toggleStyle(.button)
-                            .controlSize(.mini)
-                        Toggle("Heat", isOn: $vm.showHeatmap)
-                            .toggleStyle(.button)
-                            .controlSize(.mini)
-                        Toggle("Solo", isOn: $vm.isolateSelectedPart)
-                            .toggleStyle(.button)
-                            .controlSize(.mini)
+                        Button(action: { vm.showBones.toggle() }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "point.3.connected.trianglepath.dotted")
+                                Text("Bone").font(.system(size: 8, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(vm.showBones ? .cyan : .gray.opacity(0.3))
+
+                        Button(action: { vm.showWireframe.toggle() }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "squareshape.split.3x3")
+                                Text("Grid").font(.system(size: 8, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(vm.showWireframe ? .cyan : .gray.opacity(0.3))
+
+                        Button(action: { vm.showHeatmap.toggle() }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "flame.fill")
+                                Text("Heat").font(.system(size: 8, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(vm.showHeatmap ? .cyan : .gray.opacity(0.3))
+
+                        Button(action: { vm.isolateSelectedPart.toggle() }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "eye.fill")
+                                Text("Solo").font(.system(size: 8, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(vm.isolateSelectedPart ? .cyan : .gray.opacity(0.3))
                     }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 8)
+                    .padding(10)
+                    .frame(width: 108)
                     .liquidGlass(cornerRadius: 24)
 
                     // 2. Left Contextual Photoshop Tool Options Pane (Hideable & Stackable)

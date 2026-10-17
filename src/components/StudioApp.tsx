@@ -109,6 +109,86 @@ function ToolRailIcon({ id }: { id: string }) {
           <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
         </svg>
       );
+    case "showBones":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="7" cy="7" r="2.5" />
+          <circle cx="17" cy="17" r="2.5" />
+          <line x1="8.8" y1="8.8" x2="15.2" y2="15.2" />
+        </svg>
+      );
+    case "showMeshWireframe":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="12" y1="3" x2="12" y2="21" />
+          <line x1="3" y1="3" x2="21" y2="21" />
+        </svg>
+      );
+    case "showHeatmap":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2c1.5 3.5 4 5.5 4 9a4 4 0 1 1-8 0c0-2 1-3.5 2-5.5" />
+          <path d="M12 22a7 7 0 0 0 7-7c0-3.5-2-6-4-8" />
+        </svg>
+      );
+    case "showOnionSkin":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="12" r="5" strokeDasharray="2 2" />
+          <circle cx="15" cy="12" r="5" />
+        </svg>
+      );
+    case "showMotionArcs":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 17C6 7 18 7 21 17" strokeDasharray="3 2" />
+          <circle cx="12" cy="9.5" r="2" />
+        </svg>
+      );
+    case "showSlashTrail":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 20C10 18 16 12 20 4" />
+          <path d="M9 21c5-2 9-6 12-12" />
+        </svg>
+      );
+    case "enable3DRelight":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2" />
+          <path d="M12 20v2" />
+          <path d="m4.93 4.93 1.41 1.41" />
+          <path d="m17.66 17.66 1.41 1.41" />
+          <path d="M2 12h2" />
+          <path d="M20 12h2" />
+        </svg>
+      );
+    case "showHitboxes":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="4 2" />
+          <circle cx="12" cy="12" r="2" />
+        </svg>
+      );
+    case "showSlotStage":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="4" width="20" height="16" rx="2" />
+          <line x1="9" y1="4" x2="9" y2="20" />
+          <line x1="15" y1="4" x2="15" y2="20" />
+          <line x1="2" y1="12" x2="22" y2="12" />
+        </svg>
+      );
+    case "isolatePart":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -345,8 +425,10 @@ export function StudioApp() {
                 - Export Unity (E)
                 - AI Copilot (C)
                 - Layers Dock Toggle (L) */}
-            <aside className="pointer-events-auto w-16 rounded-[26px] liquid-glass py-2 px-1.5 flex flex-col items-center justify-between shrink-0 overflow-y-auto">
-              <div className="space-y-1 flex flex-col items-center w-full">
+            {/* 1. Far-Left Unified 2-Column Photoshop Tool Palette:
+                Every tool AND every viewport/stage tool uses the exact same icon + label button format */}
+            <aside className="pointer-events-auto w-26 rounded-[26px] liquid-glass py-2.5 px-2 flex flex-col items-center justify-between shrink-0 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-1.5 w-full">
                 {(
                   [
                     {
@@ -397,7 +479,7 @@ export function StudioApp() {
                       key={tool.id}
                       onClick={() => handleSelectLeftTool(tool.id)}
                       title={tool.label}
-                      className={`w-12 h-9 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
+                      className={`w-full h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
                         active
                           ? "liquid-glass-active"
                           : tool.id === "auto"
@@ -415,14 +497,12 @@ export function StudioApp() {
                   );
                 })}
 
-                <div className="w-9 h-px bg-white/15 my-0.5" />
-
-                {/* Undo (⌘Z) & Redo (⇧⌘Z) Tool Buttons right in the Left Tools Pane */}
+                {/* Undo (⌘Z) & Redo (⇧⌘Z) Icon Buttons */}
                 <button
                   onClick={undo}
                   disabled={historyIndex <= 0}
                   title="Undo (⌘Z)"
-                  className="w-12 h-9 rounded-2xl liquid-glass-button text-sky-200 hover:text-white disabled:opacity-40 font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition"
+                  className="w-full h-10 rounded-2xl liquid-glass-button text-sky-200 hover:text-white disabled:opacity-40 font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition"
                 >
                   <ToolRailIcon id="undo" />
                   <span className="text-[7.5px] font-semibold tracking-tight leading-none">Undo</span>
@@ -432,19 +512,17 @@ export function StudioApp() {
                   onClick={redo}
                   disabled={historyIndex >= history.length - 1}
                   title="Redo (⇧⌘Z)"
-                  className="w-12 h-9 rounded-2xl liquid-glass-button text-sky-200 hover:text-white disabled:opacity-40 font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition"
+                  className="w-full h-10 rounded-2xl liquid-glass-button text-sky-200 hover:text-white disabled:opacity-40 font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition"
                 >
                   <ToolRailIcon id="redo" />
                   <span className="text-[7.5px] font-semibold tracking-tight leading-none">Redo</span>
                 </button>
 
-                <div className="w-9 h-px bg-white/15 my-0.5" />
-
-                {/* AI Copilot & Layers Stack Dock Toggles right in the same Left Bar */}
+                {/* AI Copilot & Layers Stack Dock Icon Buttons */}
                 <button
                   onClick={() => setShowAiCopilot(!showAiCopilot)}
                   title="Toggle AI Rigging Copilot Pane (C)"
-                  className={`w-12 h-9 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
+                  className={`w-full h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
                     showAiCopilot
                       ? "liquid-glass-active"
                       : "liquid-glass-button text-purple-200 border-purple-400/35 hover:text-white"
@@ -457,21 +535,17 @@ export function StudioApp() {
                 <button
                   onClick={() => setShowLayersPane(!showLayersPane)}
                   title="Toggle Layers / Bones / History Pane (L)"
-                  className={`w-12 h-9 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
+                  className={`w-full h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
                     showLayersPane
-                      ? "bg-sky-400/25 text-sky-200 border border-sky-300/45"
+                      ? "liquid-glass-active"
                       : "liquid-glass-button text-slate-300 hover:text-white"
                   }`}
                 >
                   <ToolRailIcon id="layers" />
                   <span className="text-[7.5px] font-semibold tracking-tight leading-none">Layers</span>
                 </button>
-              </div>
 
-              <div className="w-9 h-px bg-white/15 my-0.5" />
-
-              {/* Compact 2-Column Viewport Guides & Overlays */}
-              <div className="grid grid-cols-2 gap-0.5 w-12">
+                {/* All 10 Viewport & Stage Tools Rendered as Identical Top-Style Icon + Label Buttons */}
                 {(
                   [
                     { key: "showBones", short: "Bone", active: showBones },
@@ -480,9 +554,9 @@ export function StudioApp() {
                     { key: "showOnionSkin", short: "Onion", active: showOnionSkin },
                     { key: "showMotionArcs", short: "Arcs", active: showMotionArcs },
                     { key: "showSlashTrail", short: "Trail", active: showSlashTrail },
-                    { key: "enable3DRelight", short: "3D", active: enable3DRelight },
-                    { key: "showHitboxes", short: "Box", active: showHitboxes },
-                    { key: "showSlotStage", short: "Reel", active: showSlotStage },
+                    { key: "enable3DRelight", short: "3D Lit", active: enable3DRelight },
+                    { key: "showHitboxes", short: "Box2D", active: showHitboxes },
+                    { key: "showSlotStage", short: "Reels", active: showSlotStage },
                     { key: "isolatePart", short: "Solo", active: isolatePart },
                   ] as const
                 ).map((ov) => (
@@ -490,13 +564,16 @@ export function StudioApp() {
                     key={ov.key}
                     onClick={() => toggleOverlay(ov.key)}
                     title={`Toggle ${ov.short}`}
-                    className={`py-0.5 rounded-md text-[7px] font-bold transition ${
+                    className={`w-full h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
                       ov.active
-                        ? "bg-sky-400/25 text-sky-200 border border-sky-300/40"
-                        : "text-slate-400 hover:text-slate-200"
+                        ? "liquid-glass-active"
+                        : "liquid-glass-button text-slate-300 hover:text-white"
                     }`}
                   >
-                    {ov.short}
+                    <ToolRailIcon id={ov.key} />
+                    <span className="text-[7.5px] font-semibold tracking-tight leading-none">
+                      {ov.short}
+                    </span>
                   </button>
                 ))}
               </div>
