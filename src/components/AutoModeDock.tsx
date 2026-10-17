@@ -40,6 +40,8 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
     parallax,
     activeVfx,
     mobileProfileScale,
+    slotStageMode,
+    slotOrientation,
     loadPreset,
     loadSymbolRig,
     runAutoModeSelectAction,
@@ -48,6 +50,8 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
     applyVoiceLipSync,
     setActiveVfx,
     setMobileProfileScale,
+    setSlotStageMode,
+    setSlotOrientation,
   } = useStudioStore();
 
   const categories = [
@@ -189,7 +193,50 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
           </div>
         </div>
 
-        {/* 4. Batch 8-Symbol Pack Auto-Rigger (Switch between Hero & All 8 Slot Symbols) */}
+        {/* 4. Slot Game Stage Choreographer (Tumble/Cascade, Big Win Odometer, 2-Scatter Fire, Hold & Spin) */}
+        <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-amber-300">
+              Slot Stage Choreographer
+            </span>
+            <button
+              onClick={() =>
+                setSlotOrientation(
+                  slotOrientation === "landscape_16_9" ? "portrait_9_16" : "landscape_16_9",
+                )
+              }
+              className="text-[9.5px] px-2 py-0.5 rounded-full bg-white/10 text-sky-200 font-mono"
+            >
+              {slotOrientation === "landscape_16_9" ? "16:9 Desktop" : "9:16 Mobile"}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(
+              [
+                { id: "reel_tumble_cascade", label: "⚡ Tumble & 500× Orb" },
+                { id: "big_win_ladder", label: "🏆 4-Tier Big Win" },
+                { id: "scatter_anticipation", label: "🔥 2-Scatter Fire" },
+                { id: "feature_splash", label: "✨ Feature Splash" },
+                { id: "hold_and_spin_coins", label: "🪙 Hold & Spin" },
+                { id: "off", label: "Hide Stage" },
+              ] as const
+            ).map((st) => (
+              <button
+                key={st.id}
+                onClick={() => setSlotStageMode(st.id)}
+                className={`py-1.5 px-2 rounded-xl text-[10px] font-semibold truncate transition ${
+                  slotStageMode === st.id
+                    ? "bg-amber-400 text-slate-950 font-bold shadow"
+                    : "bg-white/6 text-slate-300 hover:bg-white/12"
+                }`}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 5. Batch 8-Symbol Pack Auto-Rigger (Switch between Hero & All 8 Slot Symbols) */}
         <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-emerald-300">

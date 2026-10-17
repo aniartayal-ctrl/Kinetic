@@ -6,6 +6,11 @@ import { applyVoiceLipSyncToClip, compute25DParallaxBoneOffsets } from "../core/
 import { inferVisualPhysics, runFullAutoModePipeline } from "../core/physics-and-principles";
 import { BUILTIN_PRESETS } from "../core/presets";
 import { validateProject } from "../core/schema";
+import {
+  buildUnitySlotSuiteManifest,
+  evaluateBigWinChoreography,
+  evaluateTumbleCascadeChoreography,
+} from "../core/slot-animation-suite";
 import { evaluateElementalVfx, generateUnity2DColliders, profileProjectForUnityMobile } from "../core/vfx-colliders-profiler";
 import { paintFfdLiquifyStroke } from "../core/weights";
 import { buildCompleteUnityExportBundle } from "./node-bundle-builder";
@@ -161,4 +166,18 @@ test("1-Click AI Auto-Rigger and Liquify FFD Warp Brush produce valid rigs and v
   const symbolPack = generateBatch8SymbolPack("astral-forge");
   assert.equal(symbolPack.length, 8);
   assert.deepEqual(validateProject(symbolPack[0]!), []);
+
+  // Verify Slot Game Animation Suite Choreographer (Big Win Odometer, Tumble/Cascade & .slotanim.json)
+  const bigWinPeak = evaluateBigWinChoreography(0.95, 100, 75);
+  assert.equal(bigWinPeak.activeTier.tier, "sensational");
+  assert.ok(bigWinPeak.currentPayout >= 6000);
+
+  const tumbleBeam = evaluateTumbleCascadeChoreography("astral-forge", 1.3, 2.0);
+  assert.equal(tumbleBeam.phase, "shatter_and_beam");
+  assert.ok(tumbleBeam.multiplierBeam && tumbleBeam.multiplierBeam.label === "500×");
+
+  const slotSuiteManifest = buildUnitySlotSuiteManifest(autoShipped);
+  assert.equal(slotSuiteManifest.format, "KineticSlotAnimationSuite");
+  assert.equal(slotSuiteManifest.symbolRigs.length, 8);
+  assert.equal(slotSuiteManifest.bigWinLadder.length, 4);
 });

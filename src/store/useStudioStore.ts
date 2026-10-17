@@ -27,6 +27,11 @@ import {
   type SpineForgeProject,
   type TransformKey,
 } from "@/core/schema";
+import {
+  BIG_WIN_LADDER,
+  type SlotOrientationMode,
+  type SlotSuiteStageMode,
+} from "@/core/slot-animation-suite";
 import type { ElementalVfxType } from "@/core/vfx-colliders-profiler";
 import {
   buildPartMesh,
@@ -86,6 +91,8 @@ type StudioState = {
   lightIntensity: number;
   showHitboxes: boolean;
   showSlotStage: boolean;
+  slotStageMode: SlotSuiteStageMode;
+  slotOrientation: SlotOrientationMode;
   parallax: ParallaxLookAtConfig;
   activeVfx: ElementalVfxType;
   mobileProfileScale: 1 | 0.5;
@@ -137,6 +144,8 @@ type StudioState = {
   applyVoiceLipSync: (phraseId: string) => void;
   setActiveVfx: (vfx: ElementalVfxType) => void;
   setMobileProfileScale: (scale: 1 | 0.5) => void;
+  setSlotStageMode: (stageMode: SlotSuiteStageMode) => void;
+  setSlotOrientation: (orientation: SlotOrientationMode) => void;
   loadSymbolRig: (role: SlotSymbolRole) => void;
   updateBone: (boneName: string, patch: Partial<RigBone>) => void;
   addBone: (parentBoneName: string, name: string, x: number, y: number) => void;
@@ -201,6 +210,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   lightIntensity: 0.55,
   showHitboxes: false,
   showSlotStage: false,
+  slotStageMode: "off",
+  slotOrientation: "landscape_16_9",
   parallax: { ...DEFAULT_PARALLAX_CONFIG },
   activeVfx: "lightning_bolts",
   mobileProfileScale: 1,
@@ -388,6 +399,63 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setActiveVfx: (activeVfx) => set({ activeVfx }),
   setMobileProfileScale: (mobileProfileScale) => set({ mobileProfileScale }),
+
+  setSlotStageMode: (slotStageMode) => {
+    if (slotStageMode === "off") {
+      set({ slotStageMode: "off", showSlotStage: false });
+      return;
+    }
+    if (slotStageMode === "big_win_ladder") {
+      const topTier = BIG_WIN_LADDER[3]!;
+      set({
+        slotStageMode,
+        showSlotStage: true,
+        activeClip: topTier.heroClip,
+        activeVfx: topTier.vfx,
+        activeSkinName: topTier.skinName,
+        currentTime: 0,
+        isPlaying: true,
+      });
+    } else if (slotStageMode === "scatter_anticipation") {
+      set({
+        slotStageMode,
+        showSlotStage: true,
+        activeClip: "anticipation",
+        activeVfx: "lightning_bolts",
+        currentTime: 0,
+        isPlaying: true,
+      });
+    } else if (slotStageMode === "reel_tumble_cascade") {
+      set({
+        slotStageMode,
+        showSlotStage: true,
+        activeClip: "zeus-bolt",
+        activeVfx: "shockwave_rings",
+        currentTime: 0,
+        isPlaying: true,
+      });
+    } else if (slotStageMode === "hold_and_spin_coins") {
+      set({
+        slotStageMode,
+        showSlotStage: true,
+        activeClip: "chest-open",
+        activeVfx: "coin_fountain",
+        currentTime: 0,
+        isPlaying: true,
+      });
+    } else {
+      set({
+        slotStageMode,
+        showSlotStage: true,
+        activeClip: "power",
+        activeVfx: "star_sparks",
+        currentTime: 0,
+        isPlaying: true,
+      });
+    }
+  },
+
+  setSlotOrientation: (slotOrientation) => set({ slotOrientation }),
 
   loadSymbolRig: (role) => {
     const state = get();

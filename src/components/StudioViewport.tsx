@@ -5,6 +5,11 @@ import { SpineForgeAnimator } from "@/core/animator";
 import { getSlotStageContext } from "@/core/batch-symbols-and-slot-stage";
 import { compute25DParallaxBoneOffsets } from "@/core/parallax-and-lipsync";
 import { RIG_BONE_PALETTE } from "@/core/schema";
+import {
+  evaluateBigWinChoreography,
+  evaluateTumbleCascadeChoreography,
+  type SlotSuiteStageMode,
+} from "@/core/slot-animation-suite";
 import { applyAffine, buildSkeleton, deformMeshVerticesCPU } from "@/core/solver";
 import { evaluateElementalVfx, generateUnity2DColliders } from "@/core/vfx-colliders-profiler";
 import { SpineForgeWebGLRenderer, type GhostFramePass } from "@/core/webgl-renderer";
@@ -29,6 +34,10 @@ export function StudioViewport() {
     setCurrentTime,
     setParallaxConfig,
     showSlotStage,
+    slotStageMode,
+    slotOrientation,
+    setSlotStageMode,
+    setSlotOrientation,
     loadSymbolRig,
   } = useStudioStore();
 
@@ -663,47 +672,193 @@ export function StudioViewport() {
         }`}
       />
 
-      {/* In-Viewport 5×3 Slot Reel & Big-Win Context Stage Overlay */}
+      {/* In-Viewport Slot Game Animation Suite Stage Director */}
       {showSlotStage && (
-        <div className="absolute left-1/2 top-22 -translate-x-1/2 z-10 pointer-events-auto rounded-3xl liquid-glass p-4 border border-amber-400/35 shadow-[0_0_50px_rgba(251,191,36,0.2)] flex flex-col items-center gap-2.5">
+        <div
+          className={`absolute left-1/2 top-18 -translate-x-1/2 z-10 pointer-events-auto rounded-[28px] liquid-glass p-4 border border-amber-400/40 shadow-[0_0_60px_rgba(251,191,36,0.22)] flex flex-col items-center gap-3 ${
+            slotOrientation === "portrait_9_16" ? "w-[360px]" : "w-[540px]"
+          }`}
+        >
           {(() => {
             const stageCtx = getSlotStageContext(project.id);
+            const activeStage: SlotSuiteStageMode =
+              slotStageMode === "off" ? "reel_tumble_cascade" : slotStageMode;
+            const clipDur = Math.max(0.5, project.animations[activeClip]?.duration ?? 2.0);
+            const normProgress = (currentTime % clipDur) / clipDur;
+            const bigWinFrame = evaluateBigWinChoreography(normProgress, 100, 75);
+            const tumbleFrame = evaluateTumbleCascadeChoreography(project.id, currentTime, 2.0);
+            const baseDir = project.id.includes("solara")
+              ? "/presets/sands-of-solara"
+              : "/presets/astral-forge";
+
             return (
               <>
-                <div className="flex items-center justify-between w-full px-1 text-[11px]">
-                  <span className="font-bold uppercase tracking-wider text-amber-300">
-                    5×3 Slot Reel Context Stage (Click any symbol to rig & animate it)
-                  </span>
-                  <span className="font-mono text-sky-300">64px Cell Readability Check</span>
+                {/* Top Stage Director Bar: 5 Slot Animation Modes + 16:9 / 9:16 Orientation Switcher */}
+                <div className="flex flex-wrap items-center justify-between w-full gap-1.5 text-[10px]">
+                  <div className="flex items-center gap-1 p-0.5 rounded-full liquid-glass-well">
+                    {(
+                      [
+                        { id: "reel_tumble_cascade", label: "Tumble & 500×" },
+                        { id: "big_win_ladder", label: "Big Win Ladder" },
+                        { id: "scatter_anticipation", label: "2-Scatter Fire" },
+                        { id: "feature_splash", label: "Feature Splash" },
+                        { id: "hold_and_spin_coins", label: "Hold & Spin" },
+                      ] as { id: SlotSuiteStageMode; label: string }[]
+                    ).map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => setSlotStageMode(m.id)}
+                        className={`px-2 py-0.5 rounded-full font-bold transition ${
+                          activeStage === m.id
+                            ? "bg-amber-400 text-slate-950"
+                            : "text-slate-300 hover:text-white"
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      setSlotOrientation(
+                        slotOrientation === "landscape_16_9" ? "portrait_9_16" : "landscape_16_9",
+                      )
+                    }
+                    className="px-2.5 py-0.5 rounded-full liquid-glass-button font-mono text-sky-200"
+                  >
+                    {slotOrientation === "landscape_16_9" ? "16:9 Desktop" : "9:16 Portrait"}
+                  </button>
                 </div>
 
-                {/* 5 Columns × 3 Rows Slot Grid */}
-                <div className="grid grid-cols-5 gap-2 p-2.5 rounded-2xl bg-slate-950/75 border border-amber-400/30">
-                  {stageCtx.reelGrid.map((col, cIdx) => (
-                    <div key={cIdx} className="flex flex-col gap-2">
-                      {col.map((role, rIdx) => {
-                        const sym = stageCtx.symbols.find((s) => s.role === role) ?? stageCtx.symbols[0]!;
-                        const isWinningRow = rIdx === 1;
-                        return (
-                          <button
-                            key={`${cIdx}-${rIdx}`}
-                            onClick={() => loadSymbolRig(sym.role)}
-                            title={`Click to open ${sym.label} in Auto Rig Studio`}
-                            className={`w-16 h-16 rounded-xl p-1 flex flex-col items-center justify-center transition hover:scale-110 ${
-                              isWinningRow
-                                ? "bg-amber-400/20 border-2 border-amber-400 shadow-[0_0_16px_rgba(250,204,21,0.5)] animate-pulse"
-                                : "bg-white/5 border border-white/10 opacity-80 hover:opacity-100"
-                            }`}
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={sym.src} alt={sym.label} className="w-12 h-12 object-contain" />
-                            <span className="text-[8px] font-mono uppercase text-amber-200">{sym.role}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ))}
+                {/* Top Ornate 9-Slice Win / Multiplier Plaque */}
+                <div
+                  style={{ transform: `scale(${activeStage === "big_win_ladder" ? bigWinFrame.plaqueScale : tumbleFrame.plaqueBounceScale})` }}
+                  className="px-5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/30 via-yellow-400/40 to-amber-500/30 border border-amber-300/60 text-xs font-extrabold tracking-wider text-amber-100 shadow-[0_0_20px_rgba(251,191,36,0.35)] transition-transform"
+                >
+                  {activeStage === "big_win_ladder"
+                    ? `${bigWinFrame.activeTier.label} · $${bigWinFrame.currentPayout.toLocaleString("en-US", { minimumFractionDigits: 2 })} (${bigWinFrame.currentMultiplier}×)`
+                    : activeStage === "scatter_anticipation"
+                      ? "⚡ 2 SCATTERS LANDED — REEL 3, 4, 5 ANTICIPATION! ⚡"
+                      : activeStage === "hold_and_spin_coins"
+                        ? "🪙 HOLD & SPIN RESPIN — 3 RESPINS REMAINING 🪙"
+                        : tumbleFrame.plaqueMultiplierText}
                 </div>
+
+                {/* MODE 1: 4-Tier Big Win Celebration & Extruded Title Escalation */}
+                {activeStage === "big_win_ladder" ? (
+                  <div className="relative py-4 flex flex-col items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={stageCtx.winBanners[bigWinFrame.activeTier.tier]}
+                      alt={bigWinFrame.activeTier.label}
+                      style={{
+                        transform: `scale(${bigWinFrame.bannerScale[0]}, ${bigWinFrame.bannerScale[1]})`,
+                      }}
+                      className="max-h-36 object-contain drop-shadow-[0_0_28px_rgba(251,191,36,0.65)] transition-transform duration-75"
+                    />
+                    <div className="mt-2 font-mono text-2xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-yellow-200 to-amber-400 drop-shadow">
+                      ${bigWinFrame.currentPayout.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                ) : activeStage === "feature_splash" ? (
+                  /* MODE 4: Feature Intro / Outro 3D Splash Banner Choreographer */
+                  <div className="relative py-3 flex flex-col items-center justify-center gap-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`${baseDir}/title-free.webp`}
+                      alt="Free Spins Splash"
+                      style={{
+                        transform: `scale(${1 + Math.sin(currentTime * 4) * 0.06})`,
+                      }}
+                      className="max-h-28 object-contain drop-shadow-[0_0_24px_rgba(56,189,248,0.65)]"
+                    />
+                    <div
+                      style={{
+                        backgroundImage: `url(${baseDir}/plaque.webp)`,
+                        backgroundSize: "100% 100%",
+                      }}
+                      className="px-8 py-3 text-center text-xs font-extrabold text-amber-100 uppercase tracking-wider"
+                    >
+                      10 FREE SPINS AWARDED · ALL MULTIPLIERS ACCUMULATE!
+                    </div>
+                  </div>
+                ) : (
+                  /* MODES 2, 3, 5: 5×3 Tumble / Cascade Grid, 2-Scatter Reel Fire, or Hold & Spin Coins */
+                  <div className="relative grid grid-cols-5 gap-2 p-2.5 rounded-2xl bg-slate-950/80 border border-amber-400/35">
+                    {[0, 1, 2, 3, 4].map((cIdx) => {
+                      const isAnticipationReel = activeStage === "scatter_anticipation" && cIdx >= 2;
+                      return (
+                        <div
+                          key={cIdx}
+                          className={`flex flex-col gap-2 rounded-xl p-0.5 transition ${
+                            isAnticipationReel
+                              ? "ring-2 ring-cyan-400 shadow-[0_0_24px_#38bdf8] bg-cyan-500/15 animate-pulse"
+                              : ""
+                          }`}
+                        >
+                          {[0, 1, 2].map((rIdx) => {
+                            const cellState =
+                              tumbleFrame.cells.find((cell) => cell.col === cIdx && cell.row === rIdx) ??
+                              tumbleFrame.cells[0]!;
+                            const sym =
+                              stageCtx.symbols.find((s) => s.role === cellState.role) ?? stageCtx.symbols[0]!;
+                            const isCoinMode = activeStage === "hold_and_spin_coins";
+                            const jackpotBadge =
+                              cIdx === 2 && rIdx === 1
+                                ? "GRAND 1000×"
+                                : (cIdx + rIdx) % 2 === 0
+                                  ? "MAJOR 100×"
+                                  : "25×";
+
+                            return (
+                              <button
+                                key={`${cIdx}-${rIdx}`}
+                                onClick={() => loadSymbolRig(sym.role)}
+                                title={`Click to rig & animate ${sym.label}`}
+                                style={{
+                                  transform: `translateY(${cellState.offsetY * 22}px) scale(${cellState.scaleX}, ${cellState.scaleY})`,
+                                  opacity: cellState.opacity,
+                                }}
+                                className={`relative w-14 h-14 rounded-xl p-1 flex flex-col items-center justify-center transition ${
+                                  cellState.isWinning
+                                    ? "bg-amber-400/20 border-2 border-amber-400 shadow-[0_0_14px_rgba(250,204,21,0.5)]"
+                                    : "bg-white/5 border border-white/10"
+                                }`}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={isCoinMode ? stageCtx.coinSrc : sym.src}
+                                  alt={sym.label}
+                                  className="w-10 h-10 object-contain"
+                                />
+                                {(cellState.multiplierBadge || isCoinMode) && (
+                                  <span className="absolute -bottom-1 px-1.5 py-0.2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-mono text-[8px] font-black shadow">
+                                    {isCoinMode ? jackpotBadge : cellState.multiplierBadge}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+
+                    {/* Multiplier Projectile Beam flying from center orb to Top Total-Win Plaque */}
+                    {activeStage === "reel_tumble_cascade" && tumbleFrame.multiplierBeam && (
+                      <div
+                        style={{
+                          bottom: `${35 + tumbleFrame.multiplierBeam.progress * 65}%`,
+                          left: "50%",
+                          transform: "translate(-50%, 50%)",
+                        }}
+                        className="absolute z-20 px-2.5 py-1 rounded-full bg-cyan-300 text-slate-950 font-mono text-xs font-black shadow-[0_0_24px_#38bdf8] pointer-events-none"
+                      >
+                        ⚡ {tumbleFrame.multiplierBeam.label}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             );
           })()}

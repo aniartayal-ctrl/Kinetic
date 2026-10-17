@@ -28,6 +28,14 @@
 		<data>
 		n/8r+txxKM8CZc0sCXmOrWJ+vrA=
 		</data>
+		<key>Resources/presets/astral-forge/logo.webp</key>
+		<data>
+		z4esWAUaa0h5XxbQIU7HUdPIpAk=
+		</data>
+		<key>Resources/presets/astral-forge/panel.webp</key>
+		<data>
+		HlgqQPrrMjXHo8+hKPKHCYSqdIk=
+		</data>
 		<key>Resources/presets/astral-forge/part-arm-back.webp</key>
 		<data>
 		MFrVrGkpjcdKazUhyrzymaMqrhM=
@@ -55,6 +63,10 @@
 		<key>Resources/presets/astral-forge/part-pauldron.webp</key>
 		<data>
 		BjItT5Ur46B7yDOUCK8ywlIHAmo=
+		</data>
+		<key>Resources/presets/astral-forge/plaque.webp</key>
+		<data>
+		6XacCjcSCe2OhNIsspXxkp0vskk=
 		</data>
 		<key>Resources/presets/astral-forge/symbol-anvil.webp</key>
 		<data>
@@ -88,6 +100,22 @@
 		<data>
 		NTsjDFGTHEwhAcd6OrvXVQSk2dI=
 		</data>
+		<key>Resources/presets/astral-forge/title-free.webp</key>
+		<data>
+		HjlUwU4HYM3iOUEl/+DlXoV3vVQ=
+		</data>
+		<key>Resources/presets/astral-forge/title-jackpot.webp</key>
+		<data>
+		pChYkJQGs9PP0JyWzRKJtkA3lSU=
+		</data>
+		<key>Resources/presets/astral-forge/title-super.webp</key>
+		<data>
+		haslv0ZjygB+qbxyVajP3ygbAto=
+		</data>
+		<key>Resources/presets/astral-forge/title-total.webp</key>
+		<data>
+		RXWCNPcWvl+GawOuSDnm09XLhF0=
+		</data>
 		<key>Resources/presets/astral-forge/win-mega.webp</key>
 		<data>
 		eWp2vtEWGQpb/g6DbmW9UZrk874=
@@ -120,6 +148,14 @@
 		<data>
 		yb0yBbngGQSx9i4SG4jcz1NUPC8=
 		</data>
+		<key>Resources/presets/sands-of-solara/logo.webp</key>
+		<data>
+		N+U6Hs6BXcA6GCW35V5/J/X8w98=
+		</data>
+		<key>Resources/presets/sands-of-solara/panel.webp</key>
+		<data>
+		1T44IlWd/nTn0BQt2pTh6I8/VOg=
+		</data>
 		<key>Resources/presets/sands-of-solara/part-arm-back.webp</key>
 		<data>
 		yyRwwLx/y3y8q4jnB3BFoeKkM8s=
@@ -147,6 +183,10 @@
 		<key>Resources/presets/sands-of-solara/part-staff.webp</key>
 		<data>
 		xJ/9ubquNImBjNdSdKJo5/8BEiY=
+		</data>
+		<key>Resources/presets/sands-of-solara/plaque.webp</key>
+		<data>
+		n0+AvvRhzOZTn7TDbYmVAdtcl+U=
 		</data>
 		<key>Resources/presets/sands-of-solara/sands-of-solara.project.json</key>
 		<data>
@@ -183,6 +223,22 @@
 		<key>Resources/presets/sands-of-solara/symbol-wild.webp</key>
 		<data>
 		che4mrpoyBJIzqw6ZuXmcKl8zRg=
+		</data>
+		<key>Resources/presets/sands-of-solara/title-free.webp</key>
+		<data>
+		yvwRake9hwL7jHw0UQFNz5RZWB4=
+		</data>
+		<key>Resources/presets/sands-of-solara/title-jackpot.webp</key>
+		<data>
+		8HU4m6WZHdem72u4GmA2N3dmOPY=
+		</data>
+		<key>Resources/presets/sands-of-solara/title-super.webp</key>
+		<data>
+		QNYx1GYT2u444xkixN/+jGnMumY=
+		</data>
+		<key>Resources/presets/sands-of-solara/title-total.webp</key>
+		<data>
+		hexrZDONB87oLjIHdfdAwGKZREA=
 		</data>
 		<key>Resources/presets/sands-of-solara/win-mega.webp</key>
 		<data>
@@ -254,6 +310,20 @@
 			k7ICgFs1+JpyGiKtlL1kv2k4EXUuITJl6qLu0cf51zY=
 			</data>
 		</dict>
+		<key>Resources/presets/astral-forge/logo.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			POXf9mSlTxMSm9ZKI+9vpVxZy5AiMpBtRTtnVjOgS6A=
+			</data>
+		</dict>
+		<key>Resources/presets/astral-forge/panel.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			0FARdLqloHOQBnV4bQe6K9A1ijHCgdLL6b9EmG72vuM=
+			</data>
+		</dict>
 		<key>Resources/presets/astral-forge/part-arm-back.webp</key>
 		<dict>
 			<key>hash2</key>
@@ -301,6 +371,13 @@
 			<key>hash2</key>
 			<data>
 			qGj77pqHboqyAYNNWuCwJmGAIWxTeJDHXWvvodbDrvY=
+			</data>
+		</dict>
+		<key>Resources/presets/astral-forge/plaque.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			6LXnSl0O8CloSLILfpx65NKCMcVSrbJLjIndVTO9GDQ=
 			</data>
 		</dict>
 		<key>Resources/presets/astral-forge/symbol-anvil.webp</key>
@@ -359,6 +436,34 @@
 			hu3okvQQFOTBrNMHzsL0b+9LCnTafkh36rIRyWQDk0Q=
 			</data>
 		</dict>
+		<key>Resources/presets/astral-forge/title-free.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			ayxVKpAb6hkfEYkWDNmi1IsU0t3rPso88WC7mxhdSQ4=
+			</data>
+		</dict>
+		<key>Resources/presets/astral-forge/title-jackpot.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			ECm7v/Wgnob08PDSb910eIFSpm1m9Z5SfcMofwL50bU=
+			</data>
+		</dict>
+		<key>Resources/presets/astral-forge/title-super.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			u9PlZOVyEnbMaq0KEgxOEDJn1QzQmNxKtqDUkM6Nr2g=
+			</data>
+		</dict>
+		<key>Resources/presets/astral-forge/title-total.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			QEpNMwxydEQ2TNH4XU238Xj/W+Pzan/7TTzqyRAm40A=
+			</data>
+		</dict>
 		<key>Resources/presets/astral-forge/win-mega.webp</key>
 		<dict>
 			<key>hash2</key>
@@ -415,6 +520,20 @@
 			oA2wYkyLtwGaolfOr2Q1ahRoCyLoLHaji7lPKD04/Kk=
 			</data>
 		</dict>
+		<key>Resources/presets/sands-of-solara/logo.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			t0+VDy2fYuP0OGcVAfgUArpyEi9JMEYWP8sSL+twkvA=
+			</data>
+		</dict>
+		<key>Resources/presets/sands-of-solara/panel.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			H6e7exzba4a4TkiK+qm0ei1CDb1/PRLklRbZxpkWoGo=
+			</data>
+		</dict>
 		<key>Resources/presets/sands-of-solara/part-arm-back.webp</key>
 		<dict>
 			<key>hash2</key>
@@ -462,6 +581,13 @@
 			<key>hash2</key>
 			<data>
 			JsNeass5js7AMqoV74QZtpFExkoTWkL3IRneL6lUFME=
+			</data>
+		</dict>
+		<key>Resources/presets/sands-of-solara/plaque.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			ZMkoDSOjwBrlJWhoH3v+LZpYl0L5XOfhbDJAImtXlKQ=
 			</data>
 		</dict>
 		<key>Resources/presets/sands-of-solara/sands-of-solara.project.json</key>
@@ -525,6 +651,34 @@
 			<key>hash2</key>
 			<data>
 			InvIFF3gpdDt8/AOkjdEXF1DaRHjh5Ua6Fh/7eSgzAg=
+			</data>
+		</dict>
+		<key>Resources/presets/sands-of-solara/title-free.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			JOwyhWiYWHe8yIwrstYbtXFcYOYqGtTxu77+nyyqr2E=
+			</data>
+		</dict>
+		<key>Resources/presets/sands-of-solara/title-jackpot.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			CEUNOFz7Tp5bG5pRrD5CkPle9DNYDGWJYGzLfhERrR0=
+			</data>
+		</dict>
+		<key>Resources/presets/sands-of-solara/title-super.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			lfjEnbHPAVkJzX9SJRtfxPCfMPjQo1wHxsCVKbnLhGE=
+			</data>
+		</dict>
+		<key>Resources/presets/sands-of-solara/title-total.webp</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			BTTi7CxJDPYyikIlIyMGQ7O17qyXVi+bxuxqbwaWS6w=
 			</data>
 		</dict>
 		<key>Resources/presets/sands-of-solara/win-mega.webp</key>
