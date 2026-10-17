@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RIG_BONE_PALETTE } from "@/core/schema";
+import { buildBrowserUnityExportBundle } from "@/exporters/browser-bundle-builder";
 import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
 import { LeftToolOptionsPane, type ExportBundlePreviewData } from "./LeftToolOptionsPane";
@@ -301,11 +302,16 @@ export function StudioApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project, format: "preview", sheetCellHeight: 192, sheetFps: 10 }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Export failed");
-      setExportData(data);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Export failed");
+      if (res.ok) {
+        const data = await res.json();
+        setExportData(data);
+      } else {
+        const fallback = await buildBrowserUnityExportBundle(project);
+        setExportData(fallback);
+      }
+    } catch {
+      const fallback = await buildBrowserUnityExportBundle(project);
+      setExportData(fallback);
     } finally {
       setIsExporting(false);
     }

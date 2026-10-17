@@ -170,11 +170,16 @@ public final class MacStudioViewModel: ObservableObject {
 
     public init() {
         let envRoot = ProcessInfo.processInfo.environment["KINETIC_ROOT"] ?? ProcessInfo.processInfo.environment["SPINEFORGE_ROOT"]
-        let kineticPath = "/Users/amit.tayal/Kinetic"
-        let defaultRoot = FileManager.default.fileExists(atPath: kineticPath)
-            ? URL(fileURLWithPath: kineticPath)
-            : URL(fileURLWithPath: "/Users/amit.tayal/SpineForge")
-        let rootURL = envRoot != nil ? URL(fileURLWithPath: envRoot!) : defaultRoot
+        let bundleParent = Bundle.main.bundleURL.deletingLastPathComponent()
+        let fallbackRoot: URL
+        if FileManager.default.isWritableFile(atPath: bundleParent.path) && bundleParent.path != "/Applications" {
+            fallbackRoot = bundleParent
+        } else {
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSHomeDirectory())
+            fallbackRoot = docs.appendingPathComponent("KineticPro")
+        }
+        let rootURL = envRoot != nil ? URL(fileURLWithPath: envRoot!) : fallbackRoot
         self.workspaceRootURL = rootURL
 
         if let resourceURL = Bundle.main.resourceURL,
