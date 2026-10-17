@@ -13,6 +13,7 @@ import { RIG_BONE_PALETTE, type CurveType } from "@/core/schema";
 import type { AutoWeightMode, FfdLiquifyMode, WeightBrushMode } from "@/core/weights";
 import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
+import { AutoModeDock } from "./AutoModeDock";
 import { StudioViewport } from "./StudioViewport";
 
 type ExportBundlePreview = {
@@ -161,7 +162,8 @@ export function StudioApp() {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       const key = e.key.toLowerCase();
-      if (key === "v") setMode("animate");
+      if (key === "a") setMode("auto");
+      else if (key === "v") setMode("animate");
       else if (key === "p") setMode("rig");
       else if (key === "m") setMode("mesh");
       else if (key === "b") setMode("weights");
@@ -283,9 +285,16 @@ export function StudioApp() {
             )}
 
             <button
-              onClick={runOneClickAutoRig}
-              title="1-Click AI Auto-Rigger: Place anatomical bones, solve Delaunay meshes & weights, and generate 6 clips"
-              className="liquid-glass-button whitespace-nowrap shrink-0 px-3 py-1 rounded-full text-[11px] font-bold text-cyan-200 border-cyan-400/35"
+              onClick={() => {
+                runOneClickAutoRig();
+                setMode("auto");
+              }}
+              title="1-Click Auto Studio (A): Learn visual physics, mesh, rig, and synthesize all 14 famous game animations"
+              className={`whitespace-nowrap shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition ${
+                mode === "auto"
+                  ? "liquid-glass-active"
+                  : "liquid-glass-button text-cyan-200 border-cyan-400/35"
+              }`}
             >
               1-Click Auto-Rig
             </button>
@@ -488,6 +497,7 @@ export function StudioApp() {
             <div className="space-y-1.5 flex flex-col items-center w-full">
               {(
                 [
+                  { id: "auto", key: "A", sub: "Auto", label: "1-Click Auto Studio: Visual Physics & 14 Game Actions (A)" },
                   { id: "animate", key: "V", sub: "Pose", label: "Move / Free Transform Pose (V)" },
                   { id: "rig", key: "P", sub: "Rig", label: "Bone & IK Pin Tool (P)" },
                   { id: "mesh", key: "M", sub: "Mesh", label: "Puppet Warp Delaunay Mesh (M)" },
@@ -552,6 +562,9 @@ export function StudioApp() {
               ))}
             </div>
           </aside>
+
+          {/* 1B. Floating 1-Click Auto Studio Dock (Visual Physics Learner, 12 Principles & 14 Famous Game Actions) */}
+          {mode === "auto" && <AutoModeDock onShipToUnity={handleRunExport} />}
 
           {/* Center Canvas Spacer */}
           <div className="flex-1 pointer-events-none" />
@@ -924,19 +937,33 @@ export function StudioApp() {
             </button>
 
             <div className="flex items-center gap-1 p-1 rounded-full liquid-glass-well shrink-0">
-              {Object.keys(project.animations).map((clipName) => (
-                <button
-                  key={clipName}
-                  onClick={() => setActiveClip(clipName)}
-                  className={`whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold capitalize transition ${
-                    activeClip === clipName
-                      ? "bg-white/22 text-white shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {clipName}
-                </button>
-              ))}
+              <select
+                value={activeClip}
+                onChange={(e) => setActiveClip(e.target.value)}
+                className="bg-transparent px-2.5 py-0.5 text-[11px] font-bold text-sky-300 focus:outline-none cursor-pointer"
+              >
+                {Object.keys(project.animations).map((clipName) => (
+                  <option key={clipName} value={clipName} className="bg-slate-950 text-white">
+                    Clip: {clipName} ({project.animations[clipName]!.duration}s)
+                  </option>
+                ))}
+              </select>
+              {(["idle", "anticipation", "strike", "zeus-bolt", "symbol-win", "chest-open"] as const).map(
+                (clipName) =>
+                  project.animations[clipName] ? (
+                    <button
+                      key={clipName}
+                      onClick={() => setActiveClip(clipName)}
+                      className={`whitespace-nowrap shrink-0 px-2 py-0.5 rounded-full text-[10.5px] font-semibold capitalize transition ${
+                        activeClip === clipName
+                          ? "bg-white/22 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {clipName}
+                    </button>
+                  ) : null,
+              )}
             </div>
 
             {/* Scrubber + Unity Event Markers Overlay */}

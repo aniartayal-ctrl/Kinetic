@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { autoRigProject } from "../core/auto-rigger";
+import { inferVisualPhysics, runFullAutoModePipeline } from "../core/physics-and-principles";
 import { BUILTIN_PRESETS } from "../core/presets";
 import { validateProject } from "../core/schema";
 import { paintFfdLiquifyStroke } from "../core/weights";
@@ -62,7 +63,7 @@ test("Triple Export Engine produces valid Spine 4.2 JSON+Atlas, Unity .sfrig.jso
   assert.equal(sfrig.format, "SpineForgeUnityRig");
   assert.equal(sfrig.bones.length, project.bones.length);
   assert.equal(sfrig.submeshes.length, project.parts.length);
-  assert.equal(sfrig.animations.length, 6);
+  assert.equal(sfrig.animations.length, 14);
 
   for (const sub of sfrig.submeshes) {
     const vCount = sub.vertices.length / 2;
@@ -78,7 +79,7 @@ test("Triple Export Engine produces valid Spine 4.2 JSON+Atlas, Unity .sfrig.jso
   assert.ok(bundle.spriteSheetPng.byteLength > 1000, "Sprite sheet PNG should be non-empty");
   const sheetMeta = JSON.parse(bundle.spriteSheetJson) as UnitySpriteSheetManifest;
   assert.equal(sheetMeta.format, "SpineForgeSpriteSheet");
-  assert.equal(sheetMeta.clips.length, 6);
+  assert.equal(sheetMeta.clips.length, 14);
   assert.ok(sheetMeta.frames.length >= 24);
   assert.ok(bundle.zipBuffer.byteLength > 2000, "ZIP bundle should be generated");
 
@@ -109,4 +110,23 @@ test("1-Click AI Auto-Rigger and Liquify FFD Warp Brush produce valid rigs and v
   });
   assert.equal(offsets.length, bodyPart.mesh.positions.length);
   assert.ok(offsets.some((val) => Math.abs(val) > 0.5), "Liquify push stroke must displace vertices inside radius");
+
+  // Verify Visual Physics Inference & 1-Click Auto Mode Pipeline
+  const { project: autoShipped, physicsReport } = runFullAutoModePipeline(base, {
+    archetype: "auto_detect",
+    principles: {
+      squashAndStretch: 1.2,
+      anticipation: 1.15,
+      followThroughOverlap: 1.1,
+      arcsAndEasing: 1.0,
+      secondaryAndAppeal: 1.0,
+      exaggeration: 1.15,
+    },
+  });
+  assert.equal(physicsReport.inferredArchetype, "olympus_caster");
+  assert.ok(physicsReport.springBonesConfigured.length >= 2);
+  assert.equal(Object.keys(autoShipped.animations).length, 14);
+  assert.ok(autoShipped.animations["zeus-bolt"]);
+  assert.ok(autoShipped.animations["symbol-win"]);
+  assert.ok(autoShipped.animations["chest-open"]);
 });

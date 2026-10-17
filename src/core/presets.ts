@@ -1,4 +1,4 @@
-import { generateProceduralClips } from "./animator";
+import { synthesizeAllFamousGameClips } from "./physics-and-principles";
 import { RIG_BONE_PALETTE, type SpineForgeProject } from "./schema";
 import { buildPartMesh } from "./weights";
 
@@ -186,7 +186,7 @@ function buildAstralForgePreset(): SpineForgeProject {
   for (const part of project.parts) {
     part.mesh = buildPartMesh(project, part, { columns: 28, weightMode: "hybrid" });
   }
-  project.animations = generateProceduralClips(project);
+  project.animations = synthesizeAllFamousGameClips(project);
   return project;
 }
 
@@ -375,7 +375,7 @@ function buildSandsOfSolaraPreset(): SpineForgeProject {
   for (const part of project.parts) {
     part.mesh = buildPartMesh(project, part, { columns: 28, weightMode: "hybrid" });
   }
-  project.animations = generateProceduralClips(project);
+  project.animations = synthesizeAllFamousGameClips(project);
   return project;
 }
 

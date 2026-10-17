@@ -58,6 +58,34 @@ public enum MetalAutoRigger {
             project.bones[idx].y = rElbow.y
         }
 
+        // Infer visual physics (Center of Mass, extremity spring stiffness, damping, wind)
+        var totalArea: Float = 0
+        var wx: Float = 0
+        var wy: Float = 0
+        for p in project.parts {
+            let a = max(0.001, p.w * p.h)
+            totalArea += a
+            wx += (p.x + p.w * 0.5) * a
+            wy += (p.y + p.h * 0.5) * a
+        }
+        let comX = totalArea > 0 ? wx / totalArea : 0.5
+        let comY = totalArea > 0 ? wy / totalArea : 0.52
+
+        var springCount = 0
+        for i in project.bones.indices {
+            let low = project.bones[i].name.lowercased()
+            if low.contains("cape") || low.contains("hair") || low.contains("hem") || low.contains("tail") {
+                let isTail = low.contains("tail") || low.contains("hem")
+                project.bones[i].spring = SfSpringConfig(
+                    stiffness: isTail ? 46 : 64,
+                    damping: isTail ? 5 : 7,
+                    gain: isTail ? [9, 4] : [7, 3],
+                    wind: isTail ? 2.1 : 1.5
+                )
+                springCount += 1
+            }
+        }
+
         renderer.solver.project = project
         renderer.solver.rebuildHierarchy()
 
@@ -74,6 +102,6 @@ public enum MetalAutoRigger {
         }
 
         renderer.solver.project.animations = MetalMeshAndClipsGenerator.generateProceduralClips(for: renderer.solver.project)
-        return "AI Auto-Rigger (Apple Vision + Metal Compute): Solved \(project.bones.count) bones, \(totalVerts) Delaunay vertices & 6 clips"
+        return String(format: "Auto Studio: COM=(%.2f,%.2f), %d springs, %d Delaunay verts & 14 game clips ready", comX, comY, springCount, totalVerts)
     }
 }

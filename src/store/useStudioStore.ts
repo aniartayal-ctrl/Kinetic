@@ -1,8 +1,17 @@
 "use client";
 
 import { create } from "zustand";
-import { bakeClipConstraintsToKeyframes, generateProceduralClips, sampleDeformTrack } from "@/core/animator";
+import { bakeClipConstraintsToKeyframes, sampleDeformTrack } from "@/core/animator";
 import { autoRigProject } from "@/core/auto-rigger";
+import {
+  DEFAULT_12_PRINCIPLES,
+  inferVisualPhysics,
+  runFullAutoModePipeline,
+  synthesizeAllFamousGameClips,
+  type AnimationPrinciplesConfig,
+  type AutoArchetypeId,
+  type VisualPhysicsReport,
+} from "@/core/physics-and-principles";
 import { BUILTIN_PRESETS } from "@/core/presets";
 import {
   RIG_BONE_PALETTE,
@@ -21,7 +30,7 @@ import {
   type WeightBrushMode,
 } from "@/core/weights";
 
-export type StudioMode = "rig" | "mesh" | "weights" | "liquify" | "animate" | "export";
+export type StudioMode = "auto" | "rig" | "mesh" | "weights" | "liquify" | "animate" | "export";
 
 export type HistorySnapshot = {
   id: string;
@@ -79,6 +88,11 @@ type StudioState = {
   history: HistorySnapshot[];
   historyIndex: number;
 
+  // Visual Physics Inference & 12 Principles Auto-Mode State
+  autoArchetype: AutoArchetypeId;
+  principles: AnimationPrinciplesConfig;
+  physicsReport: VisualPhysicsReport;
+
   // Core Actions
   loadPreset: (id: string) => void;
   setProject: (project: SpineForgeProject, historyLabel?: string) => void;
@@ -103,6 +117,8 @@ type StudioState = {
 
   // AI Auto-Rig & Rigging Mutations
   runOneClickAutoRig: () => void;
+  runAutoModeSelectAction: (actionId: string, archetype?: AutoArchetypeId) => void;
+  updatePrinciples: (patch: Partial<AnimationPrinciplesConfig>) => void;
   updateBone: (boneName: string, patch: Partial<RigBone>) => void;
   addBone: (parentBoneName: string, name: string, x: number, y: number) => void;
   updatePart: (partName: string, patch: Partial<RigPart>) => void;
@@ -139,10 +155,11 @@ function makeSnapshot(label: string, project: SpineForgeProject): HistorySnapsho
 }
 
 const initialProject = BUILTIN_PRESETS["astral-forge"]!();
+const initialPhysics = inferVisualPhysics(initialProject, "auto_detect");
 
 export const useStudioStore = create<StudioState>((set, get) => ({
   project: initialProject,
-  mode: "animate",
+  mode: "auto",
   selectedBone: "arm",
   selectedPart: "body",
   activeClip: "strike",
@@ -173,6 +190,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   history: [makeSnapshot("Opened Document", initialProject)],
   historyIndex: 0,
+
+  autoArchetype: "auto_detect",
+  principles: { ...DEFAULT_12_PRINCIPLES },
+  physicsReport: initialPhysics.report,
 
   pushHistory: (label, nextProject) => {
     const { history, historyIndex } = get();
@@ -223,6 +244,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const factory = BUILTIN_PRESETS[id];
     if (!factory) return;
     const project = factory();
+    const { report } = inferVisualPhysics(project, "auto_detect");
     set({
       project,
       selectedBone: project.bones[1]?.name ?? "root",
@@ -231,6 +253,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       activeSkinName: "default",
       currentTime: 0,
       hiddenParts: [],
+      physicsReport: report,
       history: [makeSnapshot(`Loaded ${project.title}`, project)],
       historyIndex: 0,
     });
@@ -280,8 +303,43 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   runOneClickAutoRig: () => {
     const state = get();
-    const rigged = autoRigProject(state.project, undefined, { meshDensity: "high", weightMode: "hybrid" });
-    state.pushHistory("1-Click AI Auto-Rig", rigged);
+    const { project: autoShipped, physicsReport } = runFullAutoModePipeline(state.project, {
+      archetype: state.autoArchetype,
+      principles: state.principles,
+      meshDensity: "high",
+    });
+    set({ physicsReport });
+    state.pushHistory("1-Click Auto-Rig & Physics", autoShipped);
+  },
+
+  runAutoModeSelectAction: (actionId, archetype) => {
+    const state = get();
+    const nextArch = archetype ?? state.autoArchetype;
+    const { project: autoShipped, physicsReport } = runFullAutoModePipeline(state.project, {
+      archetype: nextArch,
+      principles: state.principles,
+      meshDensity: "high",
+    });
+    set({
+      autoArchetype: nextArch,
+      physicsReport,
+      activeClip: autoShipped.animations[actionId] ? actionId : "strike",
+      currentTime: 0,
+      isPlaying: true,
+    });
+    state.pushHistory(`Auto Mode → ${actionId}`, autoShipped);
+  },
+
+  updatePrinciples: (patch) => {
+    const state = get();
+    const nextPrinciples = { ...state.principles, ...patch };
+    const nextAnimations = synthesizeAllFamousGameClips(state.project, nextPrinciples);
+    const nextProject = {
+      ...state.project,
+      animations: nextAnimations,
+    };
+    set({ principles: nextPrinciples });
+    state.pushHistory("Tuned 12 Principles", nextProject);
   },
 
   updateBone: (boneName, patch) => {
@@ -603,9 +661,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const state = get();
     const nextProject = {
       ...state.project,
-      animations: generateProceduralClips(state.project),
+      animations: synthesizeAllFamousGameClips(state.project, state.principles),
     };
-    state.pushHistory("Synthesized 6 Procedural Clips", nextProject);
+    state.pushHistory("Synthesized 14 Famous Game Clips", nextProject);
   },
 
   bakeCurrentClipSprings: () => {

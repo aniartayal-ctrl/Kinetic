@@ -321,13 +321,136 @@ public enum MetalMeshAndClipsGenerator {
             ]
         ]
 
+        let anticipationBones: [String: [SfTransformKey]] = [
+            "root": [
+                SfTransformKey(time: 0.0, y: 0, sx: 1, sy: 1),
+                SfTransformKey(time: 0.35, y: 0, sx: 1.045, sy: 0.93),
+                SfTransformKey(time: 0.7, y: -3 * u, sx: 1.03, sy: 0.95),
+                SfTransformKey(time: 1.05, y: 0, sx: 1.055, sy: 0.91),
+                SfTransformKey(time: 1.8, y: 0, sx: 1, sy: 1)
+            ],
+            "chest": [
+                SfTransformKey(time: 0.0, r: 0),
+                SfTransformKey(time: 0.35, r: 5),
+                SfTransformKey(time: 1.05, r: 6.5),
+                SfTransformKey(time: 1.8, r: 0)
+            ]
+        ]
+
+        let zeusBoltBones: [String: [SfTransformKey]] = [
+            "root": [
+                SfTransformKey(time: 0.0, y: 0, sx: 1, sy: 1),
+                SfTransformKey(time: 0.22, y: 4 * u, sx: 1.05, sy: 0.92),
+                SfTransformKey(time: 0.58, y: -32 * u, sx: 0.95, sy: 1.09),
+                SfTransformKey(time: 0.92, y: -38 * u, sx: 0.94, sy: 1.11),
+                SfTransformKey(time: 1.12, y: -8 * u, sx: 1.035, sy: 0.95),
+                SfTransformKey(time: 1.9, y: 0, sx: 1, sy: 1)
+            ],
+            "arm-back": [
+                SfTransformKey(time: 0.0, r: 0),
+                SfTransformKey(time: 0.58, r: 168),
+                SfTransformKey(time: 0.92, r: 175),
+                SfTransformKey(time: 1.12, r: 42),
+                SfTransformKey(time: 1.9, r: 0)
+            ],
+            "arm": [
+                SfTransformKey(time: 0.0, r: 0),
+                SfTransformKey(time: 0.58, r: -148),
+                SfTransformKey(time: 0.92, r: -156),
+                SfTransformKey(time: 1.12, r: -22),
+                SfTransformKey(time: 1.9, r: 0)
+            ]
+        ]
+
+        let berserkSpinBones: [String: [SfTransformKey]] = [
+            "root": [
+                SfTransformKey(time: 0.0, x: 0, y: 0, sx: 1, sy: 1),
+                SfTransformKey(time: 0.28, x: -16 * u, y: 0, sx: 1.06, sy: 0.91),
+                SfTransformKey(time: 0.54, x: 24 * u, y: -12 * u, sx: 0.96, sy: 1.05),
+                SfTransformKey(time: 1.7, x: 0, y: 0, sx: 1, sy: 1)
+            ],
+            "arm": [
+                SfTransformKey(time: 0.0, r: 0),
+                SfTransformKey(time: 0.28, r: -95),
+                SfTransformKey(time: 0.54, r: 48),
+                SfTransformKey(time: 1.7, r: 0)
+            ],
+            "weapon": [
+                SfTransformKey(time: 0.0, r: 0),
+                SfTransformKey(time: 0.28, r: 95),
+                SfTransformKey(time: 0.54, r: -65),
+                SfTransformKey(time: 1.7, r: 0)
+            ]
+        ]
+
+        let hitReactBones: [String: [SfTransformKey]] = [
+            "root": [
+                SfTransformKey(time: 0.0, x: 0, sx: 1, sy: 1),
+                SfTransformKey(time: 0.12, x: -22 * u, sx: 1.08, sy: 0.89),
+                SfTransformKey(time: 0.55, x: 4 * u, sx: 0.98, sy: 1.03),
+                SfTransformKey(time: 1.2, x: 0, sx: 1, sy: 1)
+            ],
+            "chest": [
+                SfTransformKey(time: 0.0, r: 0),
+                SfTransformKey(time: 0.12, r: -15),
+                SfTransformKey(time: 1.2, r: 0)
+            ]
+        ]
+
+        let symbolWinBones: [String: [SfTransformKey]] = [
+            "root": [
+                SfTransformKey(time: 0.0, r: 0, y: 0, sx: 1, sy: 1),
+                SfTransformKey(time: 0.16, r: -3, y: 8 * u, sx: 1.12, sy: 0.86),
+                SfTransformKey(time: 0.42, r: 4, y: -24 * u, sx: 0.88, sy: 1.22),
+                SfTransformKey(time: 0.68, r: -2.5, y: 0, sx: 1.05, sy: 0.94),
+                SfTransformKey(time: 1.5, r: 0, y: 0, sx: 1, sy: 1)
+            ]
+        ]
+
+        let wildExpandBones: [String: [SfTransformKey]] = [
+            "root": [
+                SfTransformKey(time: 0.0, y: 0, sx: 1, sy: 1),
+                SfTransformKey(time: 0.24, y: 12 * u, sx: 1.16, sy: 0.82),
+                SfTransformKey(time: 0.62, y: -34 * u, sx: 0.84, sy: 1.32),
+                SfTransformKey(time: 1.8, y: 0, sx: 1, sy: 1)
+            ]
+        ]
+
+        let scatterTriggerBones: [String: [SfTransformKey]] = [
+            "root": [
+                SfTransformKey(time: 0.0, r: 0, y: 0, sx: 1, sy: 1),
+                SfTransformKey(time: 0.15, r: -5, y: 4 * u, sx: 1.06, sy: 0.92),
+                SfTransformKey(time: 0.3, r: 5, y: 6 * u, sx: 1.08, sy: 0.9),
+                SfTransformKey(time: 0.78, r: 0, y: -36 * u, sx: 0.86, sy: 1.28),
+                SfTransformKey(time: 2.0, r: 0, y: 0, sx: 1, sy: 1)
+            ]
+        ]
+
+        let chestOpenBones: [String: [SfTransformKey]] = [
+            "root": [
+                SfTransformKey(time: 0.0, r: 0, y: 0, sx: 1, sy: 1),
+                SfTransformKey(time: 0.24, r: 4, y: 4 * u, sx: 1.06, sy: 0.92),
+                SfTransformKey(time: 0.38, r: -3, y: 12 * u, sx: 1.14, sy: 0.85),
+                SfTransformKey(time: 0.68, r: 0, y: -28 * u, sx: 0.87, sy: 1.24),
+                SfTransformKey(time: 2.1, r: 0, y: 0, sx: 1, sy: 1)
+            ]
+        ]
+
         return [
             "idle": SfAnimationClip(name: "idle", duration: 4.8, fps: 24, loop: true, boneTracks: idleBones, fxTrack: nil),
+            "anticipation": SfAnimationClip(name: "anticipation", duration: 1.8, fps: 24, loop: true, boneTracks: anticipationBones, fxTrack: nil),
             "cheer": SfAnimationClip(name: "cheer", duration: 2.0, fps: 24, loop: true, boneTracks: cheerBones, fxTrack: nil),
             "strike": SfAnimationClip(name: "strike", duration: 2.0, fps: 24, loop: true, boneTracks: strikeBones, fxTrack: nil),
             "power": SfAnimationClip(name: "power", duration: 2.5, fps: 24, loop: true, boneTracks: powerBones, fxTrack: nil),
             "triumph": SfAnimationClip(name: "triumph", duration: 2.7, fps: 24, loop: true, boneTracks: triumphBones, fxTrack: nil),
-            "bow": SfAnimationClip(name: "bow", duration: 1.6, fps: 24, loop: true, boneTracks: bowBones, fxTrack: nil)
+            "bow": SfAnimationClip(name: "bow", duration: 1.6, fps: 24, loop: true, boneTracks: bowBones, fxTrack: nil),
+            "zeus-bolt": SfAnimationClip(name: "zeus-bolt", duration: 1.9, fps: 24, loop: true, boneTracks: zeusBoltBones, fxTrack: nil),
+            "berserk-spin": SfAnimationClip(name: "berserk-spin", duration: 1.7, fps: 24, loop: true, boneTracks: berserkSpinBones, fxTrack: nil),
+            "hit-react": SfAnimationClip(name: "hit-react", duration: 1.2, fps: 24, loop: true, boneTracks: hitReactBones, fxTrack: nil),
+            "symbol-win": SfAnimationClip(name: "symbol-win", duration: 1.5, fps: 24, loop: true, boneTracks: symbolWinBones, fxTrack: nil),
+            "wild-expand": SfAnimationClip(name: "wild-expand", duration: 1.8, fps: 24, loop: true, boneTracks: wildExpandBones, fxTrack: nil),
+            "scatter-trigger": SfAnimationClip(name: "scatter-trigger", duration: 2.0, fps: 24, loop: true, boneTracks: scatterTriggerBones, fxTrack: nil),
+            "chest-open": SfAnimationClip(name: "chest-open", duration: 2.1, fps: 24, loop: true, boneTracks: chestOpenBones, fxTrack: nil)
         ]
     }
 }
