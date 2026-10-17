@@ -1,0 +1,26 @@
+sands-of-solara.png
+size: 2048,2048
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+arm-upper
+  bounds: 0,0,91,187
+  offsets: 0,0,91,187
+hair
+  bounds: 0,191,282,292
+  offsets: 0,0,282,292
+head
+  bounds: 286,0,226,231
+  offsets: 0,0,226,231
+body
+  bounds: 516,0,488,944
+  offsets: 0,0,488,944
+arm-back
+  bounds: 286,235,120,410
+  offsets: 0,0,120,410
+staff
+  bounds: 0,487,229,1040
+  offsets: 0,0,229,1040
+forearm
+  bounds: 95,0,172,130
+  offsets: 0,0,172,130

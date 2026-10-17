@@ -1,0 +1,10 @@
+{
+  "name": "com.spineforge.runtime",
+  "version": "1.0.0",
+  "displayName": "SpineForge 2D Mesh & Skeletal Runtime",
+  "description": "Zero-dependency 2D skeletal, contour Delaunay mesh, 4-bone skinning, and flipbook sprite-sheet runtime & importer for Unity.",
+  "unity": "2021.3",
+  "author": {
+    "name": "SpineForge Studio"
+  }
+}

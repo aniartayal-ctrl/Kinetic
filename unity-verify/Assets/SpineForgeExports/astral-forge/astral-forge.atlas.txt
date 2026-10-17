@@ -1,0 +1,26 @@
+astral-forge.png
+size: 1024,1024
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+head
+  bounds: 0,0,122,195
+  offsets: 0,0,122,195
+body
+  bounds: 126,0,582,986
+  offsets: 0,0,582,986
+arm-back
+  bounds: 0,199,121,337
+  offsets: 0,0,121,337
+hammer
+  bounds: 712,0,249,561
+  offsets: 0,0,249,561
+arm-upper
+  bounds: 712,565,149,157
+  offsets: 0,0,149,157
+forearm
+  bounds: 865,565,133,224
+  offsets: 0,0,133,224
+pauldron
+  bounds: 712,793,159,149
+  offsets: 0,0,159,149

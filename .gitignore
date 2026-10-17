@@ -1,0 +1,11 @@
+node_modules/
+.next/
+macos-metal/.build/
+vision/.venv/
+vision/__pycache__/
+exports/
+unity-verify/Library/
+unity-verify/Temp/
+unity-verify/Logs/
+unity-verify/Obj/
+.DS_Store
