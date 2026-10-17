@@ -19,7 +19,9 @@ export type SlotSuiteStageMode =
   | "big_win_ladder"
   | "scatter_anticipation"
   | "feature_splash"
-  | "hold_and_spin_coins";
+  | "hold_and_spin_coins"
+  | "expanding_wild_reel"
+  | "bonus_wheel";
 
 export type SlotOrientationMode = "landscape_16_9" | "portrait_9_16";
 
@@ -354,3 +356,109 @@ export function buildUnitySlotSuiteManifest(project: SpineForgeProject): UnitySl
     },
   };
 }
+
+export type BonusWheelWedge = {
+  label: string;
+  color: string;
+  isGrand?: boolean;
+};
+
+export const BONUS_WHEEL_WEDGES: BonusWheelWedge[] = [
+  { label: "GRAND 1000×", color: "#facc15", isGrand: true },
+  { label: "25×", color: "#1e293b" },
+  { label: "MAJOR 250×", color: "#a855f7" },
+  { label: "15×", color: "#0f172a" },
+  { label: "MINOR 50×", color: "#38bdf8" },
+  { label: "10×", color: "#1e293b" },
+  { label: "MEGA 100×", color: "#10b981" },
+  { label: "20×", color: "#0f172a" },
+];
+
+/**
+ * Evaluates a Bonus Wheel of Fortune spin with peg-clapper spring deflection at normalized progress `u` in [0..1].
+ */
+export function evaluateBonusWheelChoreography(u: number): {
+  wheelAngleDeg: number;
+  clapperAngleDeg: number;
+  winningWedge: BonusWheelWedge;
+  isSettled: boolean;
+} {
+  const progress = Math.max(0, Math.min(1, u));
+  // Cubic ease-out spin: 3 full rotations (1080 deg) landing on Wedge 0 (GRAND 1000x)
+  const ease = 1 - Math.pow(1 - progress, 3.2);
+  const wheelAngleDeg = Number((ease * 1080).toFixed(2));
+
+  // Clapper pin deflects every 45 degrees (8 pegs around wheel)
+  const pegPhase = (wheelAngleDeg % 45) / 45;
+  const speedFactor = Math.max(0, 1 - progress * 0.92);
+  const clapperAngleDeg = Number(
+    (pegPhase < 0.25 ? -32 * (1 - pegPhase * 4) * speedFactor : Math.sin(pegPhase * Math.PI * 2) * 6 * speedFactor).toFixed(2),
+  );
+
+  return {
+    wheelAngleDeg,
+    clapperAngleDeg,
+    winningWedge: BONUS_WHEEL_WEDGES[0]!,
+    isSettled: progress > 0.92,
+  };
+}
+
+/**
+ * WebAudio Procedural Sound Effect Synthesizer for Slot Animation Events
+ * (Zero external audio files needed — synthesizes odometer ticks, slam thuds, wheel pegs, and fanfare chimes).
+ */
+export function playProceduralSlotSound(
+  kind: "tick" | "slam" | "scatter_riser" | "wheel_peg" | "jackpot_fanfare",
+): void {
+  if (typeof window === "undefined") return;
+  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return;
+
+  try {
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (kind === "tick" || kind === "wheel_peg") {
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(kind === "tick" ? 980 : 620, now);
+      osc.frequency.exponentialRampToValueAtTime(1420, now + 0.045);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+      osc.start(now);
+      osc.stop(now + 0.055);
+    } else if (kind === "slam") {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(36, now + 0.28);
+      gain.gain.setValueAtTime(0.26, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.32);
+    } else if (kind === "scatter_riser") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(1180, now + 0.45);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+      osc.start(now);
+      osc.stop(now + 0.5);
+    } else if (kind === "jackpot_fanfare") {
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+      osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+      osc.frequency.setValueAtTime(1046.5, now + 0.3); // C6
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc.start(now);
+      osc.stop(now + 0.58);
+    }
+  } catch {
+    // Ignore audio context autoplay restrictions
+  }
+}
+

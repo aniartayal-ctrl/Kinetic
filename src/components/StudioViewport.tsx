@@ -6,7 +6,9 @@ import { getSlotStageContext } from "@/core/batch-symbols-and-slot-stage";
 import { compute25DParallaxBoneOffsets } from "@/core/parallax-and-lipsync";
 import { RIG_BONE_PALETTE } from "@/core/schema";
 import {
+  BONUS_WHEEL_WEDGES,
   evaluateBigWinChoreography,
+  evaluateBonusWheelChoreography,
   evaluateTumbleCascadeChoreography,
   type SlotSuiteStageMode,
 } from "@/core/slot-animation-suite";
@@ -687,22 +689,25 @@ export function StudioViewport() {
             const normProgress = (currentTime % clipDur) / clipDur;
             const bigWinFrame = evaluateBigWinChoreography(normProgress, 100, 75);
             const tumbleFrame = evaluateTumbleCascadeChoreography(project.id, currentTime, 2.0);
+            const wheelFrame = evaluateBonusWheelChoreography(normProgress);
             const baseDir = project.id.includes("solara")
               ? "/presets/sands-of-solara"
               : "/presets/astral-forge";
 
             return (
               <>
-                {/* Top Stage Director Bar: 5 Slot Animation Modes + 16:9 / 9:16 Orientation Switcher */}
+                {/* Top Stage Director Bar: 7 Slot Animation Modes + 16:9 / 9:16 Orientation Switcher */}
                 <div className="flex flex-wrap items-center justify-between w-full gap-1.5 text-[10px]">
-                  <div className="flex items-center gap-1 p-0.5 rounded-full liquid-glass-well">
+                  <div className="flex flex-wrap items-center gap-1 p-0.5 rounded-full liquid-glass-well">
                     {(
                       [
                         { id: "reel_tumble_cascade", label: "Tumble & 500×" },
-                        { id: "big_win_ladder", label: "Big Win Ladder" },
-                        { id: "scatter_anticipation", label: "2-Scatter Fire" },
-                        { id: "feature_splash", label: "Feature Splash" },
-                        { id: "hold_and_spin_coins", label: "Hold & Spin" },
+                        { id: "big_win_ladder", label: "Big Win" },
+                        { id: "expanding_wild_reel", label: "1×3 Wild" },
+                        { id: "bonus_wheel", label: "Bonus Wheel" },
+                        { id: "scatter_anticipation", label: "2-Scatter" },
+                        { id: "feature_splash", label: "Splash" },
+                        { id: "hold_and_spin_coins", label: "Coins" },
                       ] as { id: SlotSuiteStageMode; label: string }[]
                     ).map((m) => (
                       <button
@@ -759,6 +764,42 @@ export function StudioViewport() {
                     />
                     <div className="mt-2 font-mono text-2xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-yellow-200 to-amber-400 drop-shadow">
                       ${bigWinFrame.currentPayout.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                ) : activeStage === "bonus_wheel" ? (
+                  /* MODE: Interactive Bonus Wheel of Fortune + Clapper Pin Spring Deflection */
+                  <div className="relative py-3 flex flex-col items-center justify-center">
+                    {/* Top Clapper Pin with Spring Deflection */}
+                    <div
+                      style={{
+                        transform: `rotate(${wheelFrame.clapperAngleDeg}deg)`,
+                        transformOrigin: "50% 0%",
+                      }}
+                      className="z-20 -mb-3 w-5 h-7 bg-gradient-to-b from-amber-300 to-red-500 rounded-b-full border-2 border-white shadow-lg"
+                    />
+                    {/* 8-Wedge Rotating Multiplier Wheel */}
+                    <div
+                      style={{
+                        transform: `rotate(${wheelFrame.wheelAngleDeg}deg)`,
+                        background:
+                          "conic-gradient(#facc15 0deg 45deg, #1e293b 45deg 90deg, #a855f7 90deg 135deg, #0f172a 135deg 180deg, #38bdf8 180deg 225deg, #1e293b 225deg 270deg, #10b981 270deg 315deg, #0f172a 315deg 360deg)",
+                      }}
+                      className="w-44 h-44 rounded-full border-4 border-amber-300 shadow-[0_0_32px_rgba(250,204,21,0.5)] relative flex items-center justify-center"
+                    >
+                      {BONUS_WHEEL_WEDGES.map((w, idx) => (
+                        <span
+                          key={idx}
+                          style={{
+                            transform: `rotate(${idx * 45 + 22.5}deg) translateY(-62px)`,
+                          }}
+                          className="absolute text-[8px] font-black text-white drop-shadow"
+                        >
+                          {w.label}
+                        </span>
+                      ))}
+                      <div className="w-12 h-12 rounded-full bg-slate-950 border-2 border-amber-300 flex items-center justify-center text-[9px] font-black text-amber-300">
+                        SPIN
+                      </div>
                     </div>
                   </div>
                 ) : activeStage === "feature_splash" ? (
@@ -855,6 +896,30 @@ export function StudioViewport() {
                         className="absolute z-20 px-2.5 py-1 rounded-full bg-cyan-300 text-slate-950 font-mono text-xs font-black shadow-[0_0_24px_#38bdf8] pointer-events-none"
                       >
                         ⚡ {tumbleFrame.multiplierBeam.label}
+                      </div>
+                    )}
+
+                    {/* 1×3 Full-Reel Expanding Wild Unfurl on Center Reel 3 */}
+                    {activeStage === "expanding_wild_reel" && (
+                      <div
+                        style={{
+                          transform: `scaleY(${Math.min(1, 0.35 + normProgress * 0.95)})`,
+                          transformOrigin: "50% 50%",
+                        }}
+                        className="absolute inset-y-2 left-[40.5%] w-[19%] z-20 rounded-xl bg-gradient-to-b from-amber-400/90 via-sky-500/85 to-purple-600/90 border-2 border-amber-200 shadow-[0_0_32px_rgba(250,204,21,0.75)] flex flex-col items-center justify-between p-1.5 pointer-events-none"
+                      >
+                        <span className="text-[9px] font-black uppercase text-slate-950 bg-amber-200 px-1.5 rounded-full">
+                          WILD
+                        </span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={project.src}
+                          alt="Expanding Wild Hero"
+                          className="h-28 object-contain drop-shadow"
+                        />
+                        <span className="text-[11px] font-mono font-black text-white bg-slate-950/80 px-2 py-0.5 rounded-full border border-amber-300">
+                          {Math.min(100, Math.max(2, Math.round(normProgress * 100)))}×
+                        </span>
                       </div>
                     )}
                   </div>

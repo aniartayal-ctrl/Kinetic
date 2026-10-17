@@ -6,6 +6,7 @@ import {
   FAMOUS_GAME_ACTIONS,
   type AutoArchetypeId,
 } from "@/core/physics-and-principles";
+import { playProceduralSlotSound } from "@/core/slot-animation-suite";
 import {
   profileProjectForUnityMobile,
   type ElementalVfxType,
@@ -215,9 +216,11 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
               [
                 { id: "reel_tumble_cascade", label: "⚡ Tumble & 500× Orb" },
                 { id: "big_win_ladder", label: "🏆 4-Tier Big Win" },
+                { id: "expanding_wild_reel", label: "🃏 1×3 Expanding Wild" },
+                { id: "bonus_wheel", label: "🎡 Bonus Wheel Spin" },
                 { id: "scatter_anticipation", label: "🔥 2-Scatter Fire" },
-                { id: "feature_splash", label: "✨ Feature Splash" },
                 { id: "hold_and_spin_coins", label: "🪙 Hold & Spin" },
+                { id: "feature_splash", label: "✨ Feature Splash" },
                 { id: "off", label: "Hide Stage" },
               ] as const
             ).map((st) => (
@@ -231,6 +234,27 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
                 }`}
               >
                 {st.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Procedural WebAudio Sound FX Synthesizer */}
+          <div className="pt-1 flex items-center justify-between gap-1">
+            <span className="text-[9.5px] text-slate-400 font-semibold">WebAudio Synth:</span>
+            {(
+              [
+                { id: "tick", label: "🔊 Tick" },
+                { id: "slam", label: "🔊 Slam" },
+                { id: "scatter_riser", label: "🔊 Riser" },
+                { id: "jackpot_fanfare", label: "🔊 Fanfare" },
+              ] as const
+            ).map((snd) => (
+              <button
+                key={snd.id}
+                onClick={() => playProceduralSlotSound(snd.id)}
+                className="px-1.5 py-0.5 rounded-full bg-white/8 hover:bg-white/16 text-[9px] text-amber-200 font-mono"
+              >
+                {snd.label}
               </button>
             ))}
           </div>
