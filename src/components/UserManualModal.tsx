@@ -7,6 +7,7 @@ export function CanvasCoachPill({ onOpenManual }: { onOpenManual: () => void }) 
   const { mode, selectedBone, selectedPart, brushMode, liquifyMode, brushRadius } = useStudioStore();
 
   const coachMessage: Record<string, string> = {
+    import: "Import PSD & Document Setup (O): Switch presets/skins, upload a layered .psd or flat .png, or pick any of the 8 Slot Symbols on the left.",
     auto: "1-Click Auto Studio (A): Pick any of the 14 Game Actions or 8 Slot Symbols on the left to auto-mesh, rig, infer physics & animate.",
     animate: `Pose Tool (V): Drag '${selectedBone}' on the canvas to rotate and auto-keyframe · Hold Shift (or drag root/IK) to move position.`,
     rig: `Bone Pin Tool (P): Drag '${selectedBone}' pivot on the canvas to adjust its rest bind position · Mesh weights update automatically.`,

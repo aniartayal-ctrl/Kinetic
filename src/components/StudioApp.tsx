@@ -1,19 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  EASE_BACK_OUT,
-  EASE_POWER2_IN,
-  EASE_POWER2_IN_OUT,
-  EASE_SINE_IN_OUT,
-  sampleTransformTrack,
-} from "@/core/animator";
-import { BUILTIN_PRESETS } from "@/core/presets";
-import { RIG_BONE_PALETTE, type CurveType } from "@/core/schema";
-import type { AutoWeightMode, FfdLiquifyMode, WeightBrushMode } from "@/core/weights";
+import { RIG_BONE_PALETTE } from "@/core/schema";
 import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
-import { AutoModeDock } from "./AutoModeDock";
+import { LeftToolOptionsPane } from "./LeftToolOptionsPane";
 import { StudioViewport } from "./StudioViewport";
 import { CanvasCoachPill, UserManualModal } from "./UserManualModal";
 
@@ -28,15 +19,6 @@ type ExportBundlePreview = {
   zipBase64: string;
 };
 
-const BEZIER_PRESETS: { id: string; label: string; curve: CurveType; svgPath: string }[] = [
-  { id: "sine", label: "Smooth Sine", curve: EASE_SINE_IN_OUT, svgPath: "M 4 28 C 18 28, 26 4, 40 4" },
-  { id: "easeInOut", label: "Power Ease", curve: EASE_POWER2_IN_OUT, svgPath: "M 4 28 C 22 28, 22 4, 40 4" },
-  { id: "backOut", label: "Overshoot", curve: EASE_BACK_OUT, svgPath: "M 4 28 C 12 2, 26 0, 40 6" },
-  { id: "powerIn", label: "Slam In", curve: EASE_POWER2_IN, svgPath: "M 4 28 C 26 28, 34 18, 40 4" },
-  { id: "linear", label: "Linear", curve: "linear", svgPath: "M 4 28 L 40 4" },
-  { id: "stepped", label: "Stepped", curve: "stepped", svgPath: "M 4 28 L 24 28 L 24 4 L 40 4" },
-];
-
 export function StudioApp() {
   const {
     project,
@@ -44,7 +26,6 @@ export function StudioApp() {
     selectedBone,
     selectedPart,
     activeClip,
-    activeSkinName,
     currentTime,
     isPlaying,
     playbackSpeed,
@@ -55,80 +36,51 @@ export function StudioApp() {
     showMotionArcs,
     showSlashTrail,
     enable3DRelight,
-    lightAngleDeg,
-    lightIntensity,
     showHitboxes,
     showSlotStage,
     isolatePart,
-    brushMode,
-    liquifyMode,
     brushRadius,
-    brushStrength,
-    heatmapSingleBone,
     lockedBones,
     hiddenParts,
     history,
     historyIndex,
-    loadPreset,
     setMode,
     selectBone,
     selectPart,
     setActiveClip,
-    setActiveSkin,
     setCurrentTime,
     setIsPlaying,
     setPlaybackSpeed,
-    setLightParams,
     undo,
     redo,
     jumpToHistory,
-    runOneClickAutoRig,
-    updateBone,
     addBone,
-    updateIkMix,
-    regeneratePartMesh,
-    resetPartLiquifyDeform,
-    setBrushMode,
-    setLiquifyMode,
     setBrushRadius,
-    setBrushStrength,
     toggleOverlay,
     toggleBoneLock,
     togglePartVisibility,
     movePartLayerOrder,
-    setBoneKeyframeAtCurrentTime,
-    setBoneCurveAtCurrentTime,
     deleteBoneKeyframe,
     addAnimationEventAtCurrentTime,
     deleteAnimationEvent,
-    regenerateAllProceduralClips,
     bakeCurrentClipSprings,
   } = useStudioStore();
 
-  // Photoshop-style right dock tab: Layers | Bones | History
+  // Right-Center Dock Tab: Layers | Bones | History
   const [layersTab, setLayersTab] = useState<"layers" | "bones" | "history">("layers");
   const [showAiCopilot, setShowAiCopilot] = useState(true);
   const [dopeSheetExpanded, setDopeSheetExpanded] = useState(false);
-  const [activeCurveId, setActiveCurveId] = useState("sine");
   const [eventType, setEventType] = useState("OnHit");
 
   const [newBoneName, setNewBoneName] = useState("");
-  const [weightAlgo, setWeightAlgo] = useState<AutoWeightMode>("hybrid");
   const [exportData, setExportData] = useState<ExportBundlePreview | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportTab, setExportTab] = useState<"unity" | "spine" | "sheet">("unity");
-  const [showPartCutterModal, setShowPartCutterModal] = useState(false);
   const [showUserManual, setShowUserManual] = useState(false);
-  const [cutterStatus, setCutterStatus] = useState<string>("");
   const [saveBadge, setSaveBadge] = useState<string>("Saved");
 
   const currentBoneObj = project.bones.find((b) => b.name === selectedBone) ?? project.bones[0]!;
-  const currentPartObj = project.parts.find((p) => p.name === selectedPart) ?? project.parts[0]!;
   const currentClipObj = project.animations[activeClip];
-  const currentBonePoseAtTime = sampleTransformTrack(
-    currentClipObj?.boneTracks[currentBoneObj?.name ?? "root"],
-    currentTime,
-  );
 
   const handleSaveProject = async () => {
     setSaveBadge("Saving...");
@@ -149,7 +101,7 @@ export function StudioApp() {
     }
   };
 
-  // Photoshop single-key hotkeys: V (Pose), P (Rig Pin), M (Mesh), B (Weight Brush), W (Liquify FFD), Cmd+Z / Shift+Cmd+Z (Undo/Redo), Cmd+S (Save)
+  // Single-key Photoshop shortcuts: O (Import PSD), A (Auto Studio), V (Pose), P (Rig Pin), M (Mesh), B (Weight Brush), W (Liquify FFD)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
@@ -166,7 +118,8 @@ export function StudioApp() {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       const key = e.key.toLowerCase();
-      if (key === "a") setMode("auto");
+      if (key === "o" || key === "k") setMode("import");
+      else if (key === "a") setMode("auto");
       else if (key === "v") setMode("animate");
       else if (key === "p") setMode("rig");
       else if (key === "m") setMode("mesh");
@@ -245,524 +198,200 @@ export function StudioApp() {
     }, durMs);
   };
 
-  const handleSmartCutUpload = async (file: File) => {
-    setCutterStatus("Running Vision Part Cutter + Telea Body Inpainting...");
-    try {
-      const defaultCutConfig = {
-        capsules: {
-          head: [[0.5, 0.08, 0.5, 0.16, 0.09]],
-          "arm-back": [[0.3, 0.25, 0.28, 0.48, 0.07]],
-          "arm-front": [[0.72, 0.22, 0.85, 0.44, 0.08]],
-          weapon: [[0.82, 0.45, 0.85, 0.92, 0.12]],
-        },
-        priority: ["weapon", "arm-front", "arm-back", "head"],
-        occluders: ["weapon", "arm-front", "arm-back"],
-        order: ["body", "head", "arm-back", "weapon", "arm-front"],
-      };
-      const form = new FormData();
-      form.append("file", file);
-      form.append("projectId", file.name.replace(/\.[^.]+$/, ""));
-      form.append("config", JSON.stringify(defaultCutConfig));
-
-      const res = await fetch("/api/cut-parts", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Cut failed");
-      setCutterStatus(`Cut ${data.parts?.length ?? 0} parts (${data.width}×${data.height}) with inpainted torso!`);
-    } catch (err) {
-      setCutterStatus(err instanceof Error ? err.message : "Failed");
-    }
-  };
-
   const reversedLayers = [...project.parts].reverse();
-  const activeBezierPreset = BEZIER_PRESETS.find((b) => b.id === activeCurveId) ?? BEZIER_PRESETS[0]!;
 
   return (
     <div className="relative h-screen w-screen overflow-hidden select-none">
-      {/* 1. Full-Bleed 100% Spatial Canvas Stage */}
+      {/* 1. Full-Bleed 100% Spatial Canvas Stage (No Top Bar Obstructing the Stage) */}
       <StudioViewport />
 
-      {/* 2. Photoshop-Adaptable Spatial Flex Workspace + Extreme-Right AI Agent Copilot */}
+      {/* 2. Spatial Workspace Columns:
+          [Left Group: Vertical Tool Rail (Import PSD above Auto) + Contextual Tool Options Pane]
+          [Unobstructed Center Canvas]
+          [Right Group: Layers/Bones/History Stack + Extreme-Right AI Copilot] */}
       <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-3.5 gap-3">
-        {/* TOP BAR: Photoshop Menu + Contextual Tool Options Bar + Right Actions */}
-        <header className="pointer-events-auto flex items-center justify-between gap-2.5 px-4 py-2 rounded-full liquid-glass-pill shrink-0">
-          {/* Left: Brand + Document + 1-Click Auto-Rig + Multi-Skin Wardrobe */}
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-tr from-cyan-400 to-sky-200 shadow-[0_0_12px_#38bdf8] shrink-0" />
-            <span className="font-bold tracking-tight text-sm text-white whitespace-nowrap">Kinetic Pro</span>
-
-            <select
-              value={project.id}
-              onChange={(e) => loadPreset(e.target.value)}
-              className="liquid-glass-well rounded-full px-3 py-1 text-xs font-medium text-sky-200 focus:outline-none cursor-pointer whitespace-nowrap shrink-0"
-            >
-              {Object.keys(BUILTIN_PRESETS).map((id) => (
-                <option key={id} value={id} className="bg-slate-950 text-white">
-                  {id === "astral-forge" ? "Astral Forge.psd" : "Sands of Solara.psd"}
-                </option>
-              ))}
-            </select>
-
-            {/* Multi-Skin / Tier Wardrobe Selector */}
-            {project.skins && project.skins.length > 0 && (
-              <select
-                value={activeSkinName}
-                onChange={(e) => setActiveSkin(e.target.value)}
-                title="Switch Character Skin / Evolving Symbol Tier"
-                className="liquid-glass-well rounded-full px-2.5 py-1 text-[11px] font-semibold text-amber-200 focus:outline-none cursor-pointer whitespace-nowrap shrink-0"
-              >
-                {project.skins.map((s) => (
-                  <option key={s.name} value={s.name} className="bg-slate-950 text-white">
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <button
-              onClick={() => {
-                runOneClickAutoRig();
-                setMode("auto");
-              }}
-              title="1-Click Auto Studio (A): Learn visual physics, mesh, rig, and synthesize all 14 famous game animations"
-              className={`whitespace-nowrap shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition ${
-                mode === "auto"
-                  ? "liquid-glass-active"
-                  : "liquid-glass-button text-cyan-200 border-cyan-400/35"
-              }`}
-            >
-              1-Click Auto-Rig
-            </button>
-
-            <button
-              onClick={() => setShowPartCutterModal(true)}
-              className="liquid-glass-button whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium text-slate-200"
-            >
-              Import PSD
-            </button>
-          </div>
-
-          {/* Center: Photoshop Contextual Tool Options Bar (Adapts to active tool V / P / M / B / W) */}
-          <div className="flex items-center gap-2 px-3.5 py-1 rounded-full liquid-glass-well text-xs overflow-x-auto">
-            {mode === "liquify" ? (
-              <>
-                <span className="text-[11px] font-bold text-purple-300 whitespace-nowrap">
-                  Liquify FFD (W):
-                </span>
-                {(["push", "inflate", "pinch", "restore"] as FfdLiquifyMode[]).map((lm) => (
-                  <button
-                    key={lm}
-                    onClick={() => setLiquifyMode(lm)}
-                    className={`whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize transition ${
-                      liquifyMode === lm ? "liquid-glass-active" : "text-slate-300 hover:text-white"
-                    }`}
-                  >
-                    {lm}
-                  </button>
-                ))}
-                <div className="h-3.5 w-px bg-white/15 mx-1" />
-                <span className="text-[11px] text-slate-300 whitespace-nowrap">Size: {brushRadius}px</span>
-                <input
-                  type="range"
-                  min="15"
-                  max="180"
-                  value={brushRadius}
-                  onChange={(e) => setBrushRadius(parseFloat(e.target.value))}
-                  className="w-20 accent-purple-400"
-                />
-                <button
-                  onClick={() => resetPartLiquifyDeform(currentPartObj.name)}
-                  className="whitespace-nowrap px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-200 text-[10px] font-semibold"
-                >
-                  Reset FFD
-                </button>
-              </>
-            ) : mode === "weights" ? (
-              <>
-                <span className="text-[11px] font-bold text-emerald-300 whitespace-nowrap">
-                  Weight Brush (B):
-                </span>
-                {(["add", "subtract", "smooth", "replace"] as WeightBrushMode[]).map((bm) => (
-                  <button
-                    key={bm}
-                    onClick={() => setBrushMode(bm)}
-                    className={`whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize transition ${
-                      brushMode === bm ? "liquid-glass-active" : "text-slate-300 hover:text-white"
-                    }`}
-                  >
-                    {bm}
-                  </button>
-                ))}
-                <div className="h-3.5 w-px bg-white/15 mx-1" />
-                <span className="text-[11px] text-slate-300 whitespace-nowrap">Size: {brushRadius}px</span>
-                <input
-                  type="range"
-                  min="15"
-                  max="180"
-                  value={brushRadius}
-                  onChange={(e) => setBrushRadius(parseFloat(e.target.value))}
-                  className="w-18 accent-emerald-400"
-                />
-                <span className="text-[11px] text-slate-300 whitespace-nowrap">
-                  Flow: {Math.round(brushStrength * 100)}%
-                </span>
-                <input
-                  type="range"
-                  min="0.05"
-                  max="1"
-                  step="0.05"
-                  value={brushStrength}
-                  onChange={(e) => setBrushStrength(parseFloat(e.target.value))}
-                  className="w-16 accent-emerald-400"
-                />
-              </>
-            ) : mode === "mesh" ? (
-              <>
-                <span className="text-[11px] font-bold text-sky-300 whitespace-nowrap">
-                  Puppet Mesh (M):
-                </span>
-                {(["low", "medium", "high"] as const).map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => regeneratePartMesh(currentPartObj.name, d, weightAlgo)}
-                    className={`whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize transition ${
-                      (currentPartObj.meshDensity ?? "medium") === d
-                        ? "liquid-glass-active"
-                        : "text-slate-300 hover:text-white"
-                    }`}
-                  >
-                    {d}
-                  </button>
-                ))}
-                <div className="h-3.5 w-px bg-white/15 mx-1" />
-                <select
-                  value={weightAlgo}
-                  onChange={(e) => {
-                    const nextAlgo = e.target.value as AutoWeightMode;
-                    setWeightAlgo(nextAlgo);
-                    regeneratePartMesh(currentPartObj.name, currentPartObj.meshDensity ?? "medium", nextAlgo);
-                  }}
-                  className="bg-transparent text-[11px] text-sky-200 font-semibold focus:outline-none"
-                >
-                  <option value="hybrid" className="bg-slate-950">Kernel: Hybrid Capsule</option>
-                  <option value="heat" className="bg-slate-950">Kernel: Geodesic Heat</option>
-                  <option value="capsule" className="bg-slate-950">Kernel: Strict Envelopes</option>
-                </select>
-              </>
-            ) : (
-              <>
-                <span className="text-[11px] font-bold text-sky-300 whitespace-nowrap">
-                  {mode === "rig" ? "Bone Pin (P):" : "Transform Pose (V):"}
-                </span>
-                <span className="text-[11px] font-mono text-slate-200 whitespace-nowrap">
-                  {currentBoneObj.name} ({currentBoneObj.x}, {currentBoneObj.y})
-                </span>
-                {project.ikConstraints[0] && (
-                  <>
-                    <div className="h-3.5 w-px bg-white/15 mx-1" />
-                    <span className="text-[11px] text-slate-300 whitespace-nowrap">
-                      IK Mix: {Math.round(project.ikConstraints[0].mix * 100)}%
-                    </span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={project.ikConstraints[0].mix}
-                      onChange={(e) => updateIkMix(project.ikConstraints[0]!.name, parseFloat(e.target.value))}
-                      className="w-18 accent-sky-400"
-                    />
-                  </>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Right: Undo/Redo + Save (⌘S) + Export Unity + AI Copilot Toggle */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              onClick={undo}
-              disabled={historyIndex <= 0}
-              title="Undo (⌘Z)"
-              className="px-2.5 py-1.5 rounded-full liquid-glass-button text-xs font-bold text-slate-200 disabled:opacity-35"
-            >
-              ↶
-            </button>
-            <button
-              onClick={redo}
-              disabled={historyIndex >= history.length - 1}
-              title="Redo (⇧⌘Z)"
-              className="px-2.5 py-1.5 rounded-full liquid-glass-button text-xs font-bold text-slate-200 disabled:opacity-35"
-            >
-              ↷
-            </button>
-            <button
-              onClick={() => void handleSaveProject()}
-              title="Save Project to Disk & LocalStorage (⌘S)"
-              className="whitespace-nowrap shrink-0 px-3 py-1.5 rounded-full liquid-glass-button text-xs font-semibold text-sky-200 hover:text-white"
-            >
-              {saveBadge}
-            </button>
-            <button
-              onClick={handleRunExport}
-              disabled={isExporting}
-              className="whitespace-nowrap shrink-0 px-4 py-1.5 rounded-full text-xs font-bold tracking-tight bg-gradient-to-b from-emerald-300 to-emerald-500 text-slate-950 shadow-[0_0_18px_rgba(52,211,153,0.45)] hover:brightness-110 transition disabled:opacity-50"
-            >
-              {isExporting ? "Baking..." : "Export Unity"}
-            </button>
-            <button
-              onClick={() => setShowAiCopilot(!showAiCopilot)}
-              className={`whitespace-nowrap shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition ${
-                showAiCopilot ? "liquid-glass-active" : "liquid-glass-button text-slate-200"
-              }`}
-            >
-              AI Copilot
-            </button>
-            <button
-              onClick={() => setShowUserManual(true)}
-              title="Open Interactive User Manual & Guided Tour (?)"
-              className="whitespace-nowrap shrink-0 px-3 py-1.5 rounded-full liquid-glass-button text-xs font-bold text-amber-200 hover:text-white"
-            >
-              ? Guide
-            </button>
-          </div>
-        </header>
-
-        {/* MIDDLE WORKSPACE ROW:
-            [1. Left Photoshop Vertical Tool Rail]
-            [2. Unobstructed Center Canvas]
-            [3. Right-Center Photoshop Properties + Layers/Bones/History Stack]
-            [4. Extreme-Right AI Agent Copilot Dock] */}
+        {/* MAIN WORKSPACE ROW */}
         <div className="flex-1 min-h-0 flex items-stretch justify-between gap-3">
-          {/* 1. Far-Left Single-Column Photoshop Vertical Tool Rail */}
-          <aside className="pointer-events-auto w-14 rounded-[26px] liquid-glass py-2.5 px-1.5 flex flex-col items-center justify-between shrink-0">
-            <div className="space-y-1.5 flex flex-col items-center w-full">
-              {(
-                [
-                  { id: "auto", key: "A", sub: "Auto", label: "1-Click Auto Studio: Visual Physics & 14 Game Actions (A)" },
-                  { id: "animate", key: "V", sub: "Pose", label: "Move / Free Transform Pose (V)" },
-                  { id: "rig", key: "P", sub: "Rig", label: "Bone & IK Pin Tool (P)" },
-                  { id: "mesh", key: "M", sub: "Mesh", label: "Puppet Warp Delaunay Mesh (M)" },
-                  { id: "weights", key: "B", sub: "Brush", label: "Weight Paint Brush (B)" },
-                  { id: "liquify", key: "W", sub: "Warp", label: "Liquify FFD Vertex Sculpt (W)" },
-                ] as { id: StudioMode; key: string; sub: string; label: string }[]
-              ).map((tool) => {
-                const active = mode === tool.id;
-                return (
+          {/* LEFT GROUP: [1. Vertical Tool Rail] + [2. Contextual Photoshop Tool Options Pane] */}
+          <div className="flex items-stretch gap-3 shrink-0">
+            {/* 1. Far-Left Vertical Tool Rail (Import PSD tab placed at the very top above Auto) */}
+            <aside className="pointer-events-auto w-15 rounded-[26px] liquid-glass py-2.5 px-1.5 flex flex-col items-center justify-between shrink-0">
+              <div className="space-y-1.5 flex flex-col items-center w-full">
+                {(
+                  [
+                    {
+                      id: "import",
+                      key: "PSD",
+                      sub: "Import",
+                      label: "Import PSD / Cut PNG & Document Setup (O)",
+                    },
+                    {
+                      id: "auto",
+                      key: "A",
+                      sub: "Auto",
+                      label: "1-Click Auto Studio: Visual Physics & 14 Game Actions (A)",
+                    },
+                    {
+                      id: "animate",
+                      key: "V",
+                      sub: "Pose",
+                      label: "Move / Free Transform Pose Tool (V)",
+                    },
+                    {
+                      id: "rig",
+                      key: "P",
+                      sub: "Rig",
+                      label: "Bone & IK Pin Tool (P)",
+                    },
+                    {
+                      id: "mesh",
+                      key: "M",
+                      sub: "Mesh",
+                      label: "Puppet Warp Delaunay Mesh Tool (M)",
+                    },
+                    {
+                      id: "weights",
+                      key: "B",
+                      sub: "Brush",
+                      label: "GPU Weight Paint Brush Tool (B)",
+                    },
+                    {
+                      id: "liquify",
+                      key: "W",
+                      sub: "Warp",
+                      label: "Liquify FFD Vertex Sculpt Tool (W)",
+                    },
+                  ] as { id: StudioMode; key: string; sub: string; label: string }[]
+                ).map((tool) => {
+                  const active = mode === tool.id;
+                  return (
+                    <button
+                      key={tool.id}
+                      onClick={() => setMode(tool.id)}
+                      title={tool.label}
+                      className={`w-11 h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center transition ${
+                        active
+                          ? "liquid-glass-active"
+                          : tool.id === "import"
+                            ? "liquid-glass-button text-cyan-200 border-cyan-400/35 hover:text-white"
+                            : "liquid-glass-button text-slate-300 hover:text-white"
+                      }`}
+                    >
+                      <span className={tool.key === "PSD" ? "text-[10px] tracking-tight" : "text-xs"}>
+                        {tool.key}
+                      </span>
+                      <span className="text-[8px] font-normal opacity-80">{tool.sub}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="w-8 h-px bg-white/15 my-0.5" />
+
+              {/* Viewport Guide & Overlay Toggles */}
+              <div className="space-y-1 flex flex-col items-center w-full">
+                {(
+                  [
+                    { key: "showBones", short: "Bones", active: showBones },
+                    { key: "showMeshWireframe", short: "Grid", active: showMeshWireframe },
+                    { key: "showHeatmap", short: "Heat", active: showHeatmap },
+                    { key: "showOnionSkin", short: "Onion", active: showOnionSkin },
+                    { key: "showMotionArcs", short: "Arcs", active: showMotionArcs },
+                    { key: "showSlashTrail", short: "Trail", active: showSlashTrail },
+                    { key: "enable3DRelight", short: "3D Lit", active: enable3DRelight },
+                    { key: "showHitboxes", short: "Box2D", active: showHitboxes },
+                    { key: "showSlotStage", short: "Reels", active: showSlotStage },
+                    { key: "isolatePart", short: "Solo", active: isolatePart },
+                  ] as const
+                ).map((ov) => (
                   <button
-                    key={tool.id}
-                    onClick={() => setMode(tool.id)}
-                    title={tool.label}
-                    className={`w-10 h-9.5 rounded-2xl font-bold text-xs flex flex-col items-center justify-center transition ${
-                      active ? "liquid-glass-active" : "liquid-glass-button text-slate-300 hover:text-white"
+                    key={ov.key}
+                    onClick={() => toggleOverlay(ov.key)}
+                    title={`Toggle ${ov.short}`}
+                    className={`w-11 py-1 rounded-xl text-[9px] font-semibold transition ${
+                      ov.active
+                        ? "bg-sky-400/25 text-sky-200 border border-sky-300/40"
+                        : "text-slate-400 hover:text-slate-200"
                     }`}
                   >
-                    <span>{tool.key}</span>
-                    <span className="text-[8px] font-normal opacity-75">{tool.sub}</span>
+                    {ov.short}
                   </button>
-                );
-              })}
+                ))}
+              </div>
+            </aside>
 
-              <button
-                onClick={() => setShowPartCutterModal(true)}
-                title="PSD Layer Extractor & Part Slice Knife (K)"
-                className="w-10 h-9.5 rounded-2xl liquid-glass-button text-slate-300 hover:text-white font-bold text-xs flex flex-col items-center justify-center"
-              >
-                <span>K</span>
-                <span className="text-[8px] font-normal opacity-75">Slice</span>
-              </button>
-            </div>
-
-            <div className="w-7 h-px bg-white/15 my-0.5" />
-
-            {/* Viewport Overlay Toggles (Bones, Grid, Heat, Onion Skin, Motion Arcs, Slash Trail, 3D Light, Solo) */}
-            <div className="space-y-1 flex flex-col items-center w-full">
-              {(
-                [
-                  { key: "showBones", short: "Bones", active: showBones },
-                  { key: "showMeshWireframe", short: "Grid", active: showMeshWireframe },
-                  { key: "showHeatmap", short: "Heat", active: showHeatmap },
-                  { key: "showOnionSkin", short: "Onion", active: showOnionSkin },
-                  { key: "showMotionArcs", short: "Arcs", active: showMotionArcs },
-                  { key: "showSlashTrail", short: "Trail", active: showSlashTrail },
-                  { key: "enable3DRelight", short: "3D Lit", active: enable3DRelight },
-                  { key: "showHitboxes", short: "Box2D", active: showHitboxes },
-                  { key: "showSlotStage", short: "Reels", active: showSlotStage },
-                  { key: "isolatePart", short: "Solo", active: isolatePart },
-                ] as const
-              ).map((ov) => (
-                <button
-                  key={ov.key}
-                  onClick={() => toggleOverlay(ov.key)}
-                  title={`Toggle ${ov.short}`}
-                  className={`w-10 py-1 rounded-xl text-[9px] font-semibold transition ${
-                    ov.active
-                      ? "bg-sky-400/25 text-sky-200 border border-sky-300/40"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  {ov.short}
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          {/* 1B. Floating 1-Click Auto Studio Dock (Visual Physics Learner, 12 Principles & 14 Famous Game Actions) */}
-          {mode === "auto" && <AutoModeDock onShipToUnity={handleRunExport} />}
+            {/* 2. Contextual Photoshop Tool Options Pane (Provides full controls for whichever tool is clicked) */}
+            <LeftToolOptionsPane onShipToUnity={handleRunExport} />
+          </div>
 
           {/* Center Canvas Spacer */}
           <div className="flex-1 pointer-events-none" />
 
-          {/* Right Group: [Photoshop Properties + Layers/Bones/History Dock] + [Extreme-Right AI Copilot Window] */}
+          {/* RIGHT GROUP: [3. Photoshop Layers / Bones / History Dock] + [4. Extreme-Right AI Copilot] */}
           <div className="flex items-stretch gap-3 shrink-0">
-            {/* 3. Right-Center Dock: Photoshop Properties (Top) + Layers/Bones/History Stack (Bottom) */}
+            {/* 3. Right-Center Dock: Global Actions Header + Photoshop Layers / Bones / History Stack */}
             <aside className="pointer-events-auto w-76 rounded-[26px] liquid-glass flex flex-col overflow-hidden shrink-0">
-              {/* Top Half: Photoshop Properties + Bezier Graph + 3D Normal Relight */}
-              <div className="p-3.5 border-b border-white/12 space-y-2.5 overflow-y-auto max-h-[52%]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-sky-300">
-                    Properties — {mode === "mesh" || mode === "weights" || mode === "liquify" ? currentPartObj.name : currentBoneObj.name}
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-400">
-                    {project.width}×{project.height}
-                  </span>
-                </div>
-
-                {/* Transform / Pose Coordinates */}
-                <div className="p-2.5 rounded-2xl liquid-glass-well space-y-2 text-xs">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-300 font-semibold">Transform ({currentBoneObj.name})</span>
+              {/* Compact Action Header (Undo, Redo, Save, Export Unity, AI Copilot, Guide) */}
+              <div className="p-3 border-b border-white/12 space-y-2.5 shrink-0">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-tr from-cyan-400 to-sky-200 shadow-[0_0_10px_#38bdf8]" />
+                    <span className="font-bold text-xs text-white tracking-tight">Kinetic Pro</span>
+                  </div>
+                  <div className="flex items-center gap-1">
                     <button
-                      onClick={() =>
-                        setBoneKeyframeAtCurrentTime(currentBoneObj.name, {
-                          r: currentBonePoseAtTime.r,
-                          x: currentBonePoseAtTime.x,
-                          y: currentBonePoseAtTime.y,
-                          sx: currentBonePoseAtTime.sx,
-                          sy: currentBonePoseAtTime.sy,
-                          curve: activeBezierPreset.curve,
-                        })
-                      }
-                      className="px-2 py-0.5 rounded-full bg-purple-500/25 border border-purple-400/40 text-purple-200 text-[10px] font-semibold"
+                      onClick={undo}
+                      disabled={historyIndex <= 0}
+                      title="Undo (⌘Z)"
+                      className="px-2 py-0.5 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35"
                     >
-                      + Key ({currentTime.toFixed(2)}s)
+                      ↶
+                    </button>
+                    <button
+                      onClick={redo}
+                      disabled={historyIndex >= history.length - 1}
+                      title="Redo (⇧⌘Z)"
+                      className="px-2 py-0.5 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35"
+                    >
+                      ↷
+                    </button>
+                    <button
+                      onClick={() => void handleSaveProject()}
+                      title="Save Project (⌘S)"
+                      className="px-2.5 py-0.5 rounded-full liquid-glass-button text-[10.5px] font-semibold text-sky-200"
+                    >
+                      {saveBadge}
+                    </button>
+                    <button
+                      onClick={() => setShowUserManual(true)}
+                      title="Interactive User Manual (?)"
+                      className="px-2 py-0.5 rounded-full liquid-glass-button text-[10.5px] font-bold text-amber-200"
+                    >
+                      ?
                     </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <label className="space-y-0.5">
-                      <span className="text-[10px] text-slate-400">Angle °</span>
-                      <input
-                        type="number"
-                        step="1"
-                        value={Number(currentBonePoseAtTime.r.toFixed(1))}
-                        onChange={(e) =>
-                          setBoneKeyframeAtCurrentTime(currentBoneObj.name, {
-                            ...currentBonePoseAtTime,
-                            r: parseFloat(e.target.value) || 0,
-                          })
-                        }
-                        className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white text-xs"
-                      />
-                    </label>
-                    <label className="space-y-0.5">
-                      <span className="text-[10px] text-slate-400">ΔX px</span>
-                      <input
-                        type="number"
-                        step="1"
-                        value={Number(currentBonePoseAtTime.x.toFixed(1))}
-                        onChange={(e) =>
-                          setBoneKeyframeAtCurrentTime(currentBoneObj.name, {
-                            ...currentBonePoseAtTime,
-                            x: parseFloat(e.target.value) || 0,
-                          })
-                        }
-                        className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white text-xs"
-                      />
-                    </label>
-                    <label className="space-y-0.5">
-                      <span className="text-[10px] text-slate-400">ΔY px</span>
-                      <input
-                        type="number"
-                        step="1"
-                        value={Number(currentBonePoseAtTime.y.toFixed(1))}
-                        onChange={(e) =>
-                          setBoneKeyframeAtCurrentTime(currentBoneObj.name, {
-                            ...currentBonePoseAtTime,
-                            y: parseFloat(e.target.value) || 0,
-                          })
-                        }
-                        className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white text-xs"
-                      />
-                    </label>
-                  </div>
                 </div>
 
-                {/* Visual Cubic Bezier Curve Graph Editor */}
-                <div className="p-2.5 rounded-2xl liquid-glass-well space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-cyan-200">Bezier Interpolation Graph</span>
-                    <svg width="44" height="32" viewBox="0 0 44 32" className="rounded bg-black/40 border border-white/10">
-                      <path
-                        d={activeBezierPreset.svgPath}
-                        fill="none"
-                        stroke="#38bdf8"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {BEZIER_PRESETS.map((bp) => (
-                      <button
-                        key={bp.id}
-                        onClick={() => {
-                          setActiveCurveId(bp.id);
-                          setBoneCurveAtCurrentTime(currentBoneObj.name, bp.curve);
-                        }}
-                        className={`py-1 px-1.5 rounded-lg text-[10px] font-medium truncate transition ${
-                          activeCurveId === bp.id
-                            ? "bg-sky-400/25 text-sky-200 border border-sky-300/40"
-                            : "bg-white/5 text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        {bp.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Real-Time 3D Normal-Map Point Relighting */}
-                <div className="p-2.5 rounded-2xl liquid-glass-well space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-amber-200">3D Normal Relight</span>
-                    <span className="text-[10px] font-mono text-slate-300">
-                      {lightAngleDeg}° · {Math.round(lightIntensity * 100)}%
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      min="-180"
-                      max="180"
-                      value={lightAngleDeg}
-                      onChange={(e) => setLightParams(parseFloat(e.target.value), lightIntensity)}
-                      title="Light Direction Angle"
-                      className="flex-1 accent-amber-400"
-                    />
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={lightIntensity}
-                      onChange={(e) => setLightParams(lightAngleDeg, parseFloat(e.target.value))}
-                      title="Light Intensity"
-                      className="w-20 accent-amber-400"
-                    />
-                  </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    onClick={handleRunExport}
+                    disabled={isExporting}
+                    className="py-1.5 rounded-full text-[11px] font-bold bg-gradient-to-b from-emerald-300 to-emerald-500 text-slate-950 shadow-[0_0_14px_rgba(52,211,153,0.4)] hover:brightness-110 transition disabled:opacity-50"
+                  >
+                    {isExporting ? "Baking..." : "Export Unity"}
+                  </button>
+                  <button
+                    onClick={() => setShowAiCopilot(!showAiCopilot)}
+                    className={`py-1.5 rounded-full text-[11px] font-bold transition ${
+                      showAiCopilot ? "liquid-glass-active" : "liquid-glass-button text-slate-200"
+                    }`}
+                  >
+                    {showAiCopilot ? "Hide AI Copilot" : "AI Copilot"}
+                  </button>
                 </div>
               </div>
 
-              {/* Bottom Half: Photoshop Layers | Bones | History Stack */}
+              {/* Photoshop Layers | Bones | History Stack */}
               <div className="flex-1 flex flex-col min-h-0 p-3">
                 <div className="grid grid-cols-3 p-0.5 rounded-full liquid-glass-well text-[11px] mb-2.5 shrink-0">
                   <button
@@ -1027,7 +656,6 @@ export function StudioApp() {
                   }}
                   className="w-full accent-sky-300 cursor-pointer"
                 />
-                {/* Render Unity AnimationEvent flags along the scrubber */}
                 {(currentClipObj?.events ?? []).map((ev, idx) => {
                   const pct = Math.max(0, Math.min(100, (ev.time / (currentClipObj?.duration ?? 2.4)) * 100));
                   return (
@@ -1232,43 +860,7 @@ export function StudioApp() {
         </div>
       )}
 
-      {/* 4. Liquid Glass Smart Part Cutter & PSD Importer Modal */}
-      {showPartCutterModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className="rounded-[28px] liquid-glass max-w-lg w-full p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white">
-                Photoshop .PSD Layer Importer & Smart Part Knife
-              </h3>
-              <button
-                onClick={() => setShowPartCutterModal(false)}
-                className="whitespace-nowrap px-3 py-1 rounded-full liquid-glass-button text-xs text-slate-200"
-              >
-                Done
-              </button>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Upload a layered Photoshop <code className="text-sky-300">.psd</code> file or a flat <code className="text-sky-300">.png/.webp</code> character. Kinetic Pro preserves layer order, generates circular joint cover rings, and inpaints occluded torso areas.
-            </p>
-            <input
-              type="file"
-              accept=".png,.webp,.psd"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleSmartCutUpload(f);
-              }}
-              className="block w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-sky-400 file:text-slate-950 cursor-pointer"
-            />
-            {cutterStatus && (
-              <div className="p-3 rounded-2xl liquid-glass-well text-xs font-mono text-emerald-300">
-                {cutterStatus}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 5. Interactive User Manual & Step-by-Step Guided Tour Modal */}
+      {/* 4. Interactive User Manual & Step-by-Step Guided Tour Modal */}
       <UserManualModal
         isOpen={showUserManual}
         onClose={() => setShowUserManual(false)}

@@ -42,7 +42,7 @@ import {
   type WeightBrushMode,
 } from "@/core/weights";
 
-export type StudioMode = "auto" | "rig" | "mesh" | "weights" | "liquify" | "animate" | "export";
+export type StudioMode = "import" | "auto" | "rig" | "mesh" | "weights" | "liquify" | "animate" | "export";
 
 export type HistorySnapshot = {
   id: string;

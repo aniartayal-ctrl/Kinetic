@@ -67,6 +67,8 @@ public struct AiChatEntry: Identifiable {
 @MainActor
 public final class MacStudioViewModel: ObservableObject {
     public enum StudioMode: String, CaseIterable {
+        case importPsd = "Import PSD (O)"
+        case autoStudio = "Auto Studio (A)"
         case animate = "Move / Pose (V)"
         case rig = "Bone Pin (P)"
         case mesh = "Puppet Mesh (M)"
@@ -679,157 +681,69 @@ public struct SpineForgeMainStudioView: View {
             MetalViewportRepresentable(viewModel: vm)
                 .ignoresSafeArea()
 
-            // 2. Non-Overlapping Spatial Workspace Columns
+            // 2. Non-Overlapping Spatial Workspace Columns (No Top Bar Obstructing Stage)
             VStack(spacing: 10) {
-                // TOP ROW: Photoshop Menu + Contextual Tool Options Bar + Export & AI Toggle
-                HStack(spacing: 12) {
-                    HStack(spacing: 7) {
-                        Circle()
-                            .fill(Color.cyan)
-                            .frame(width: 10, height: 10)
-                            .shadow(color: .cyan, radius: 6)
-                        Text("Kinetic Pro")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-
-                    Picker("", selection: Binding(
-                        get: { vm.selectedPreset },
-                        set: { vm.loadPreset(id: $0) }
-                    )) {
-                        Text("Document: Astral Forge.psd").tag("astral-forge")
-                        Text("Document: Sands of Solara.psd").tag("sands-of-solara")
-                    }
-                    .labelsHidden()
-                    .frame(width: 200)
-
-                    Button("1-Click Auto-Rig") {
-                        vm.runAppleVisionAutoRig()
-                    }
-                    .controlSize(.small)
-
-                    Button("Open...") {
-                        vm.openProjectDialog()
-                    }
-                    .controlSize(.small)
-
-                    Divider().frame(height: 16)
-
-                    // Photoshop Contextual Tool Options Bar
-                    if vm.mode == .weights {
-                        HStack(spacing: 8) {
-                            Text("Weight Brush (B):")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.green)
-                            Picker("", selection: $vm.brushMode) {
-                                Text("Add").tag("add")
-                                Text("Subtract").tag("subtract")
-                                Text("Replace").tag("replace")
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 190)
-
-                            Text("Size: \(Int(vm.brushRadius))px")
-                                .font(.system(size: 11, design: .monospaced))
-                            Slider(value: $vm.brushRadius, in: 15...180)
-                                .frame(width: 90)
-                        }
-                    } else if vm.mode == .mesh {
-                        HStack(spacing: 8) {
-                            Text("Puppet Warp Mesh (M):")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.cyan)
-                            Picker("", selection: Binding(
-                                get: { vm.meshDensity },
-                                set: { vm.setPartMeshDensity($0) }
-                            )) {
-                                Text("Low").tag("low")
-                                Text("Medium").tag("medium")
-                                Text("High").tag("high")
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 190)
-
-                            Button("GPU Capsule Weights") { vm.dispatchGpuComputeAutoWeights(mode: 0) }
-                                .controlSize(.small)
-                            Button("GPU Heat Weights") { vm.dispatchGpuComputeAutoWeights(mode: 1) }
-                                .controlSize(.small)
-                        }
-                    } else {
-                        HStack(spacing: 8) {
-                            Text(vm.mode == .rig ? "Bone Pin Tool (P):" : "Free Transform / Pose (V):")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.cyan)
-                            Text("Active Bone: \(vm.selectedBone)")
-                                .font(.system(size: 11, design: .monospaced))
-                        }
-                    }
-
-                    Spacer()
-
-                    Button(action: { vm.bakeAndExportOnMetal(revealInFinder: true) }) {
-                        Label("Export Unity", systemImage: "bolt.fill")
-                            .font(.system(size: 11, weight: .bold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .controlSize(.small)
-
-                    Toggle("AI Copilot", isOn: $vm.showAiCopilot)
-                        .toggleStyle(.button)
-                        .controlSize(.small)
-
-                    Button("? Guide") {
-                        vm.showUserManualSheet = true
-                    }
-                    .controlSize(.small)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .liquidGlass(isPill: true)
-
                 // MIDDLE WORKSPACE ROW:
-                // [Left Photoshop Vertical Tool Rail] | [Canvas] | [Right-Center Properties + Layers] | [Extreme-Right AI Agent Copilot]
+                // [Left Photoshop Tool Rail (Import PSD above Auto) + Contextual Tool Options Pane] | [Canvas] | [Right-Center Layers/Bones] | [Extreme-Right AI Copilot]
                 HStack(alignment: .top, spacing: 12) {
-                    // 1. Far-Left Single-Column Photoshop Tool Rail (V, P, M, B + Eye Guides)
-                    VStack(spacing: 8) {
+                    // 1. Far-Left Single-Column Photoshop Tool Rail (Import PSD at top above Auto)
+                    VStack(spacing: 7) {
+                        Button(action: { vm.mode = .importPsd }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "square.and.arrow.down.fill")
+                                Text("PSD").font(.system(size: 8.5, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(vm.mode == .importPsd ? .cyan : .blue.opacity(0.35))
+
+                        Button(action: { vm.mode = .autoStudio }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "wand.and.stars")
+                                Text("Auto").font(.system(size: 8.5, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(vm.mode == .autoStudio ? .cyan : .gray.opacity(0.3))
+
                         Button(action: { vm.mode = .animate }) {
-                            VStack(spacing: 2) {
+                            VStack(spacing: 1) {
                                 Image(systemName: "cursorarrow.motionlines")
                                 Text("V").font(.system(size: 9, weight: .bold))
                             }
-                            .frame(width: 38, height: 38)
+                            .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(vm.mode == .animate ? .cyan : .gray.opacity(0.3))
 
                         Button(action: { vm.mode = .rig }) {
-                            VStack(spacing: 2) {
+                            VStack(spacing: 1) {
                                 Image(systemName: "pin.fill")
                                 Text("P").font(.system(size: 9, weight: .bold))
                             }
-                            .frame(width: 38, height: 38)
+                            .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(vm.mode == .rig ? .cyan : .gray.opacity(0.3))
 
                         Button(action: { vm.mode = .mesh }) {
-                            VStack(spacing: 2) {
+                            VStack(spacing: 1) {
                                 Image(systemName: "triangle")
                                 Text("M").font(.system(size: 9, weight: .bold))
                             }
-                            .frame(width: 38, height: 38)
+                            .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(vm.mode == .mesh ? .cyan : .gray.opacity(0.3))
 
                         Button(action: { vm.mode = .weights }) {
-                            VStack(spacing: 2) {
+                            VStack(spacing: 1) {
                                 Image(systemName: "paintbrush.pointed.fill")
                                 Text("B").font(.system(size: 9, weight: .bold))
                             }
-                            .frame(width: 38, height: 38)
+                            .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(vm.mode == .weights ? .cyan : .gray.opacity(0.3))
@@ -853,10 +767,152 @@ public struct SpineForgeMainStudioView: View {
                     .padding(.horizontal, 8)
                     .liquidGlass(cornerRadius: 24)
 
+                    // 2. Left Contextual Photoshop Tool Options Pane (Changes dynamically per selected tool)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(vm.mode.rawValue.uppercased())
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.cyan)
+                            Spacer()
+                            Button("⚡ Auto-Rig") {
+                                vm.runAppleVisionAutoRig()
+                            }
+                            .controlSize(.mini)
+                        }
+
+                        if vm.mode == .importPsd {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Active Character Preset (.psd)")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                Picker("", selection: Binding(
+                                    get: { vm.selectedPreset },
+                                    set: { vm.loadPreset(id: $0) }
+                                )) {
+                                    Text("Astral Forge.psd").tag("astral-forge")
+                                    Text("Sands of Solara.psd").tag("sands-of-solara")
+                                }
+                                .labelsHidden()
+
+                                Button("Import Custom .PSD / .PNG...") {
+                                    vm.openProjectDialog()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.cyan)
+                                .controlSize(.small)
+                            }
+                            .padding(10)
+                            .background(Color.black.opacity(0.28))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        } else if vm.mode == .weights {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("GPU Weight Paint Brush (B)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.green)
+                                Picker("", selection: $vm.brushMode) {
+                                    Text("Add").tag("add")
+                                    Text("Subtract").tag("subtract")
+                                    Text("Replace").tag("replace")
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+
+                                Toggle("Single-Bone Thermal Ramp", isOn: $vm.singleBoneThermalHeatmap)
+                                    .font(.system(size: 11))
+
+                                Text("Brush Radius: \(Int(vm.brushRadius)) px")
+                                    .font(.system(size: 10))
+                                Slider(value: $vm.brushRadius, in: 15...180)
+
+                                Text("Brush Strength: \(Int(vm.brushStrength * 100))%")
+                                    .font(.system(size: 10))
+                                Slider(value: $vm.brushStrength, in: 0.05...1.0)
+                            }
+                            .padding(10)
+                            .background(Color.black.opacity(0.28))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        } else if vm.mode == .mesh {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Delaunay Contour Mesher (\(vm.selectedPart))")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.cyan)
+                                Picker("", selection: Binding(
+                                    get: { vm.meshDensity },
+                                    set: { vm.setPartMeshDensity($0) }
+                                )) {
+                                    Text("Low").tag("low")
+                                    Text("Medium").tag("medium")
+                                    Text("High").tag("high")
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+
+                                HStack {
+                                    Button("GPU Capsule Weights") { vm.dispatchGpuComputeAutoWeights(mode: 0) }
+                                        .controlSize(.small)
+                                    Button("GPU Heat Weights") { vm.dispatchGpuComputeAutoWeights(mode: 1) }
+                                        .controlSize(.small)
+                                }
+                            }
+                            .padding(10)
+                            .background(Color.black.opacity(0.28))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Famous Slot & Game Actions (14)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.yellow)
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        ForEach(vm.project.animations.keys.sorted(), id: \.self) { clipName in
+                                            Button(action: { vm.activeClip = clipName }) {
+                                                HStack {
+                                                    Text(clipName.capitalized)
+                                                        .font(.system(size: 11, weight: .semibold))
+                                                    Spacer()
+                                                    Text(String(format: "%.1fs", vm.project.animations[clipName]?.duration ?? 2.0))
+                                                        .font(.system(size: 9, design: .monospaced))
+                                                }
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .tint(vm.activeClip == clipName ? .cyan : .gray.opacity(0.25))
+                                            .controlSize(.small)
+                                        }
+                                    }
+                                }
+                                .frame(maxHeight: 240)
+                            }
+                            .padding(10)
+                            .background(Color.black.opacity(0.28))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                    }
+                    .padding(12)
+                    .frame(width: 260)
+                    .liquidGlass(cornerRadius: 26)
+
                     Spacer()
 
-                    // 3. Right-Center Dock: Photoshop Properties (Top) + Layers / Bones Stack (Bottom)
+                    // 3. Right-Center Dock: Global Actions + Photoshop Properties + Layers / Bones Stack
                     VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 6) {
+                            Button(action: { vm.bakeAndExportOnMetal(revealInFinder: true) }) {
+                                Label("Export Unity", systemImage: "bolt.fill")
+                                    .font(.system(size: 10.5, weight: .bold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
+                            .controlSize(.small)
+
+                            Toggle("AI Copilot", isOn: $vm.showAiCopilot)
+                                .toggleStyle(.button)
+                                .controlSize(.small)
+
+                            Button("?") {
+                                vm.showUserManualSheet = true
+                            }
+                            .controlSize(.small)
+                        }
                         // Top: Properties Card
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
