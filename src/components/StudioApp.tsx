@@ -6,7 +6,7 @@ import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
 import { LeftToolOptionsPane, type ExportBundlePreviewData } from "./LeftToolOptionsPane";
 import { StudioViewport } from "./StudioViewport";
-import { CanvasCoachPill, UserManualModal } from "./UserManualModal";
+import { UserManualModal } from "./UserManualModal";
 
 /** Crisp inline SVG icons for the Photoshop Left Tool Rail (Magic Wand, PSD, Unity Cube, AI Copilot, Layers, etc.) */
 function ToolRailIcon({ id }: { id: string }) {
@@ -187,6 +187,14 @@ function ToolRailIcon({ id }: { id: string }) {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
           <circle cx="12" cy="12" r="3" />
+        </svg>
+      );
+    case "help":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <path d="M12 17h.01" />
         </svg>
       );
     default:
@@ -576,6 +584,22 @@ export function StudioApp() {
                     </span>
                   </button>
                 ))}
+
+                {/* Question Mark (?) User Manual & Guided Tour Button on the Left Tools Pane */}
+                <button
+                  onClick={() => setShowUserManual(!showUserManual)}
+                  title="Interactive User Manual & Guided Tour (?)"
+                  className={`col-span-2 w-full h-9 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
+                    showUserManual
+                      ? "liquid-glass-active"
+                      : "liquid-glass-button text-amber-200 border-amber-400/35 hover:text-white"
+                  }`}
+                >
+                  <ToolRailIcon id="help" />
+                  <span className="text-[8px] font-bold tracking-tight leading-none">
+                    ? Manual & Tour
+                  </span>
+                </button>
               </div>
             </aside>
 
@@ -884,9 +908,6 @@ export function StudioApp() {
             </div>
           )}
         </div>
-
-        {/* Live Contextual Canvas Coach Pill */}
-        <CanvasCoachPill onOpenManual={() => setShowUserManual(true)} />
 
         {/* BOTTOM ROW: Photoshop Video Timeline, Unity AnimationEvents & Keyframe Dope Sheet Dock */}
         <footer

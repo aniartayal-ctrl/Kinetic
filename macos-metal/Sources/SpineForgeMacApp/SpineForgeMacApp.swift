@@ -884,6 +884,16 @@ public struct SpineForgeMainStudioView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(vm.isolateSelectedPart ? .cyan : .gray.opacity(0.3))
+
+                        Button(action: { vm.showUserManualSheet.toggle() }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "questionmark.circle.fill")
+                                Text("Guide").font(.system(size: 8, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(vm.showUserManualSheet ? .yellow : .yellow.opacity(0.35))
                     }
                     .padding(10)
                     .frame(width: 108)
