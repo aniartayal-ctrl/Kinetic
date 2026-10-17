@@ -78,6 +78,26 @@ export function StudioApp() {
   const [exportTab, setExportTab] = useState<"unity" | "spine" | "sheet">("unity");
   const [showPartCutterModal, setShowPartCutterModal] = useState(false);
   const [cutterStatus, setCutterStatus] = useState<string>("");
+  const [saveBadge, setSaveBadge] = useState<string>("Saved");
+
+  const handleSaveProject = async () => {
+    setSaveBadge("Saving...");
+    try {
+      localStorage.setItem(`kinetic-pro:${project.id}`, JSON.stringify(project));
+      const res = await fetch("/api/save-project", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project }),
+      });
+      if (res.ok) {
+        setSaveBadge(`Saved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+      } else {
+        setSaveBadge("Saved locally");
+      }
+    } catch {
+      setSaveBadge("Saved locally");
+    }
+  };
 
   const currentBoneObj = project.bones.find((b) => b.name === selectedBone) ?? project.bones[0]!;
   const currentPartObj = project.parts.find((p) => p.name === selectedPart) ?? project.parts[0]!;
@@ -87,9 +107,14 @@ export function StudioApp() {
     currentTime,
   );
 
-  // Photoshop single-key hotkeys: V (Move/Pose), P (Bone Pin), M (Puppet Mesh), B (Weight Brush), [ / ] (Brush Size)
+  // Photoshop single-key hotkeys: V (Move/Pose), P (Bone Pin), M (Puppet Mesh), B (Weight Brush), [ / ] (Brush Size), Cmd+S (Save)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void handleSaveProject();
+        return;
+      }
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       const key = e.key.toLowerCase();
@@ -106,7 +131,8 @@ export function StudioApp() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [brushRadius, isPlaying, setBrushRadius, setIsPlaying, setMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brushRadius, isPlaying, project, setBrushRadius, setIsPlaying, setMode]);
 
   const handleRunExport = async () => {
     setIsExporting(true);
@@ -323,8 +349,15 @@ export function StudioApp() {
             )}
           </div>
 
-          {/* Right: Export Unity + AI Copilot Toggle */}
+          {/* Right: Save (⌘S) + Export Unity + AI Copilot Toggle */}
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => void handleSaveProject()}
+              title="Save Project to Disk & LocalStorage (⌘S)"
+              className="whitespace-nowrap shrink-0 px-3 py-1.5 rounded-full liquid-glass-button text-xs font-semibold text-sky-200 hover:text-white"
+            >
+              Save (⌘S) · {saveBadge}
+            </button>
             <button
               onClick={handleRunExport}
               disabled={isExporting}
