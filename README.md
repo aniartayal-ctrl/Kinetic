@@ -2,6 +2,14 @@
 
 **Kinetic Pro** is a standalone 2D skeletal, contour Delaunay mesh, weight-painting, and slot game animation studio built with **Apple Metal GPU acceleration (`Kinetic Pro.app`)**, an **iOS 26 / macOS 26 Liquid Glass** Photoshop-adaptable workspace, an **AI Rigging Copilot (Cursor, Claude, ChatGPT, Grok)**, and a **3-Way Unity & Spine 4.2 Export Engine**.
 
+📖 **[Read the Complete User Manual (`USER_MANUAL.md`)](./USER_MANUAL.md)**
+
+![Kinetic Pro — 1-Click Auto Studio & Slot Stage Choreographer](./docs/screenshots/slot-suite-tumble.webp)
+
+![Kinetic Pro — 4-Tier Big Win Escalation & Live Odometer](./docs/screenshots/slot-suite-bigwin.webp)
+
+![Kinetic Pro — Interactive In-App User Manual & 3-Click Guided Tour](./docs/screenshots/user-manual-tour.webp)
+
 ---
 
 ## Core Capabilities
