@@ -95,6 +95,20 @@ function ToolRailIcon({ id }: { id: string }) {
           <polyline points="2 12 12 17 22 12" />
         </svg>
       );
+    case "undo":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 7v6h6" />
+          <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+        </svg>
+      );
+    case "redo":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 7v6h-6" />
+          <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -331,7 +345,7 @@ export function StudioApp() {
                 - Export Unity (E)
                 - AI Copilot (C)
                 - Layers Dock Toggle (L) */}
-            <aside className="pointer-events-auto w-15 rounded-[26px] liquid-glass py-2 px-1.5 flex flex-col items-center justify-between shrink-0 overflow-y-auto">
+            <aside className="pointer-events-auto w-16 rounded-[26px] liquid-glass py-2 px-1.5 flex flex-col items-center justify-between shrink-0 overflow-y-auto">
               <div className="space-y-1 flex flex-col items-center w-full">
                 {(
                   [
@@ -383,7 +397,7 @@ export function StudioApp() {
                       key={tool.id}
                       onClick={() => handleSelectLeftTool(tool.id)}
                       title={tool.label}
-                      className={`w-11 h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
+                      className={`w-12 h-9 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
                         active
                           ? "liquid-glass-active"
                           : tool.id === "auto"
@@ -401,13 +415,36 @@ export function StudioApp() {
                   );
                 })}
 
-                <div className="w-8 h-px bg-white/15 my-0.5" />
+                <div className="w-9 h-px bg-white/15 my-0.5" />
+
+                {/* Undo (⌘Z) & Redo (⇧⌘Z) Tool Buttons right in the Left Tools Pane */}
+                <button
+                  onClick={undo}
+                  disabled={historyIndex <= 0}
+                  title="Undo (⌘Z)"
+                  className="w-12 h-9 rounded-2xl liquid-glass-button text-sky-200 hover:text-white disabled:opacity-40 font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition"
+                >
+                  <ToolRailIcon id="undo" />
+                  <span className="text-[7.5px] font-semibold tracking-tight leading-none">Undo</span>
+                </button>
+
+                <button
+                  onClick={redo}
+                  disabled={historyIndex >= history.length - 1}
+                  title="Redo (⇧⌘Z)"
+                  className="w-12 h-9 rounded-2xl liquid-glass-button text-sky-200 hover:text-white disabled:opacity-40 font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition"
+                >
+                  <ToolRailIcon id="redo" />
+                  <span className="text-[7.5px] font-semibold tracking-tight leading-none">Redo</span>
+                </button>
+
+                <div className="w-9 h-px bg-white/15 my-0.5" />
 
                 {/* AI Copilot & Layers Stack Dock Toggles right in the same Left Bar */}
                 <button
                   onClick={() => setShowAiCopilot(!showAiCopilot)}
                   title="Toggle AI Rigging Copilot Pane (C)"
-                  className={`w-11 h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
+                  className={`w-12 h-9 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
                     showAiCopilot
                       ? "liquid-glass-active"
                       : "liquid-glass-button text-purple-200 border-purple-400/35 hover:text-white"
@@ -420,7 +457,7 @@ export function StudioApp() {
                 <button
                   onClick={() => setShowLayersPane(!showLayersPane)}
                   title="Toggle Layers / Bones / History Pane (L)"
-                  className={`w-11 h-9 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
+                  className={`w-12 h-9 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
                     showLayersPane
                       ? "bg-sky-400/25 text-sky-200 border border-sky-300/45"
                       : "liquid-glass-button text-slate-300 hover:text-white"
@@ -429,47 +466,23 @@ export function StudioApp() {
                   <ToolRailIcon id="layers" />
                   <span className="text-[7.5px] font-semibold tracking-tight leading-none">Layers</span>
                 </button>
-
-                <div className="w-8 h-px bg-white/15 my-0.5" />
-
-                {/* Undo (⌘Z) & Redo (⇧⌘Z) directly on the Left Tool Rail */}
-                <div className="grid grid-cols-2 gap-1 w-11">
-                  <button
-                    onClick={undo}
-                    disabled={historyIndex <= 0}
-                    title="Undo (⌘Z)"
-                    className="h-8 rounded-xl liquid-glass-button text-xs font-bold text-slate-200 hover:text-white disabled:opacity-35 flex flex-col items-center justify-center leading-none"
-                  >
-                    <span>↶</span>
-                    <span className="text-[6.5px] font-semibold opacity-75">Undo</span>
-                  </button>
-                  <button
-                    onClick={redo}
-                    disabled={historyIndex >= history.length - 1}
-                    title="Redo (⇧⌘Z)"
-                    className="h-8 rounded-xl liquid-glass-button text-xs font-bold text-slate-200 hover:text-white disabled:opacity-35 flex flex-col items-center justify-center leading-none"
-                  >
-                    <span>↷</span>
-                    <span className="text-[6.5px] font-semibold opacity-75">Redo</span>
-                  </button>
-                </div>
               </div>
 
-              <div className="w-8 h-px bg-white/15 my-0.5" />
+              <div className="w-9 h-px bg-white/15 my-0.5" />
 
-              {/* Compact Viewport Guides & Overlays */}
-              <div className="space-y-0.5 flex flex-col items-center w-full">
+              {/* Compact 2-Column Viewport Guides & Overlays */}
+              <div className="grid grid-cols-2 gap-0.5 w-12">
                 {(
                   [
-                    { key: "showBones", short: "Bones", active: showBones },
+                    { key: "showBones", short: "Bone", active: showBones },
                     { key: "showMeshWireframe", short: "Grid", active: showMeshWireframe },
                     { key: "showHeatmap", short: "Heat", active: showHeatmap },
                     { key: "showOnionSkin", short: "Onion", active: showOnionSkin },
                     { key: "showMotionArcs", short: "Arcs", active: showMotionArcs },
                     { key: "showSlashTrail", short: "Trail", active: showSlashTrail },
-                    { key: "enable3DRelight", short: "3D Lit", active: enable3DRelight },
-                    { key: "showHitboxes", short: "Box2D", active: showHitboxes },
-                    { key: "showSlotStage", short: "Reels", active: showSlotStage },
+                    { key: "enable3DRelight", short: "3D", active: enable3DRelight },
+                    { key: "showHitboxes", short: "Box", active: showHitboxes },
+                    { key: "showSlotStage", short: "Reel", active: showSlotStage },
                     { key: "isolatePart", short: "Solo", active: isolatePart },
                   ] as const
                 ).map((ov) => (
@@ -477,7 +490,7 @@ export function StudioApp() {
                     key={ov.key}
                     onClick={() => toggleOverlay(ov.key)}
                     title={`Toggle ${ov.short}`}
-                    className={`w-11 py-0.5 rounded-lg text-[8.5px] font-semibold transition ${
+                    className={`py-0.5 rounded-md text-[7px] font-bold transition ${
                       ov.active
                         ? "bg-sky-400/25 text-sky-200 border border-sky-300/40"
                         : "text-slate-400 hover:text-slate-200"
