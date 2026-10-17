@@ -154,6 +154,32 @@ function buildAstralForgePreset(): SpineForgeProject {
       w: 1.481,
       h: 1.333,
     },
+    skins: [
+      {
+        name: "default",
+        label: "Tier 1 · Star-Forged (Base)",
+        tint: "#ffffff",
+        rimColor: "#7fd8ff",
+        flashColor: "#f3c969",
+        weaponScale: 1.0,
+      },
+      {
+        name: "awakened",
+        label: "Tier 2 · Nebula Awakened",
+        tint: "#dbeafe",
+        rimColor: "#38bdf8",
+        flashColor: "#a855f7",
+        weaponScale: 1.08,
+      },
+      {
+        name: "ascended",
+        label: "Tier 3 · Supernova Ascended",
+        tint: "#fef3c7",
+        rimColor: "#facc15",
+        flashColor: "#ff6b00",
+        weaponScale: 1.15,
+      },
+    ],
     animations: {},
   };
 
@@ -317,6 +343,32 @@ function buildSandsOfSolaraPreset(): SpineForgeProject {
       w: 1.259,
       h: 1.222,
     },
+    skins: [
+      {
+        name: "default",
+        label: "Tier 1 · Solar Priestess (Base)",
+        tint: "#ffffff",
+        rimColor: "#ffe28a",
+        flashColor: "#ff9b3d",
+        weaponScale: 1.0,
+      },
+      {
+        name: "awakened",
+        label: "Tier 2 · Golden Mirage",
+        tint: "#fef08a",
+        rimColor: "#facc15",
+        flashColor: "#38bdf8",
+        weaponScale: 1.08,
+      },
+      {
+        name: "ascended",
+        label: "Tier 3 · Eclipse Sovereign",
+        tint: "#f5d0fe",
+        rimColor: "#e879f9",
+        flashColor: "#f43f5e",
+        weaponScale: 1.15,
+      },
+    ],
     animations: {},
   };
 

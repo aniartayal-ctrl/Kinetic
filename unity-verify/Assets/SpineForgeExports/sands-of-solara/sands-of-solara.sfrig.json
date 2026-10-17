@@ -18328,6 +18328,32 @@
       ]
     }
   ],
+  "skins": [
+    {
+      "name": "default",
+      "label": "Tier 1 · Solar Priestess (Base)",
+      "tint": "#ffffff",
+      "rimColor": "#ffe28a",
+      "flashColor": "#ff9b3d",
+      "weaponScale": 1
+    },
+    {
+      "name": "awakened",
+      "label": "Tier 2 · Golden Mirage",
+      "tint": "#fef08a",
+      "rimColor": "#facc15",
+      "flashColor": "#38bdf8",
+      "weaponScale": 1.08
+    },
+    {
+      "name": "ascended",
+      "label": "Tier 3 · Eclipse Sovereign",
+      "tint": "#f5d0fe",
+      "rimColor": "#e879f9",
+      "flashColor": "#f43f5e",
+      "weaponScale": 1.15
+    }
+  ],
   "animations": [
     {
       "name": "idle",
@@ -29557,7 +29583,8 @@
             "forearm"
           ]
         }
-      ]
+      ],
+      "events": []
     },
     {
       "name": "cheer",
@@ -34354,6 +34381,22 @@
             "staff",
             "forearm"
           ]
+        }
+      ],
+      "events": [
+        {
+          "time": 0.3,
+          "name": "PlaySFX",
+          "stringParam": "sfx_cheer_whoosh",
+          "floatParam": 0.8,
+          "intParam": 0
+        },
+        {
+          "time": 0.42,
+          "name": "SpawnVFX",
+          "stringParam": "vfx_gold_sparks",
+          "floatParam": 1,
+          "intParam": 0
         }
       ]
     },
@@ -39176,6 +39219,29 @@
             "staff",
             "forearm"
           ]
+        }
+      ],
+      "events": [
+        {
+          "time": 0.28,
+          "name": "PlaySFX",
+          "stringParam": "sfx_weapon_windup",
+          "floatParam": 0.7,
+          "intParam": 0
+        },
+        {
+          "time": 0.85,
+          "name": "OnHit",
+          "stringParam": "impact_heavy_slam",
+          "floatParam": 1,
+          "intParam": 1
+        },
+        {
+          "time": 0.88,
+          "name": "CameraShake",
+          "stringParam": "heavy",
+          "floatParam": 0.9,
+          "intParam": 0
         }
       ]
     },
@@ -45150,6 +45216,22 @@
             "staff",
             "forearm"
           ]
+        }
+      ],
+      "events": [
+        {
+          "time": 0.48,
+          "name": "OnHit",
+          "stringParam": "impact_first_wave",
+          "floatParam": 0.75,
+          "intParam": 1
+        },
+        {
+          "time": 1.06,
+          "name": "SpawnVFX",
+          "stringParam": "vfx_super_aura_burst",
+          "floatParam": 1,
+          "intParam": 2
         }
       ]
     },
@@ -51605,6 +51687,22 @@
             "forearm"
           ]
         }
+      ],
+      "events": [
+        {
+          "time": 0.42,
+          "name": "SpawnVFX",
+          "stringParam": "vfx_sensational_supernova",
+          "floatParam": 1,
+          "intParam": 3
+        },
+        {
+          "time": 0.47,
+          "name": "CameraShake",
+          "stringParam": "mega_burst",
+          "floatParam": 1,
+          "intParam": 0
+        }
       ]
     },
     {
@@ -55442,6 +55540,15 @@
             "staff",
             "forearm"
           ]
+        }
+      ],
+      "events": [
+        {
+          "time": 0.5,
+          "name": "PlaySFX",
+          "stringParam": "sfx_armor_bow",
+          "floatParam": 0.6,
+          "intParam": 0
         }
       ]
     }

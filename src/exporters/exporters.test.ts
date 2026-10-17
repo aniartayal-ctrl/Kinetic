@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { autoRigProject } from "../core/auto-rigger";
 import { BUILTIN_PRESETS } from "../core/presets";
+import { validateProject } from "../core/schema";
+import { paintFfdLiquifyStroke } from "../core/weights";
 import { buildCompleteUnityExportBundle } from "./node-bundle-builder";
 import type { Spine42Json } from "./spine42-exporter";
 import type { UnitySpriteSheetManifest } from "./spritesheet-exporter";
@@ -78,4 +81,32 @@ test("Triple Export Engine produces valid Spine 4.2 JSON+Atlas, Unity .sfrig.jso
   assert.equal(sheetMeta.clips.length, 6);
   assert.ok(sheetMeta.frames.length >= 24);
   assert.ok(bundle.zipBuffer.byteLength > 2000, "ZIP bundle should be generated");
+
+  // 5. Verify Multi-Skin Wardrobe & AnimationEvent triggers in Spine 4.2 and Unity .sfrig.json
+  assert.equal(spine.skins.length, 3, "Spine 4.2 should export all 3 skin tiers");
+  assert.equal(sfrig.skins.length, 3, "Unity .sfrig.json should export all 3 skin tiers");
+  assert.ok(spine.events && "OnHit" in spine.events, "Spine 4.2 should export OnHit event catalog");
+  const strikeClipUnity = sfrig.animations.find((a) => a.name === "strike");
+  assert.ok(strikeClipUnity && strikeClipUnity.events.length >= 2, "Unity strike clip should include AnimationEvents");
+});
+
+test("1-Click AI Auto-Rigger and Liquify FFD Warp Brush produce valid rigs and vertex offsets", () => {
+  const base = BUILTIN_PRESETS["sands-of-solara"]!();
+  const rigged = autoRigProject(base, undefined, { meshDensity: "high", weightMode: "hybrid" });
+  assert.deepEqual(validateProject(rigged), []);
+  assert.ok(rigged.bones.length >= 10);
+
+  const bodyPart = rigged.parts.find((p) => p.name === "body")!;
+  assert.ok(bodyPart.mesh);
+  const offsets = paintFfdLiquifyStroke(bodyPart.mesh, undefined, {
+    x: 0.35 * rigged.width,
+    y: 0.45 * rigged.height,
+    dx: 18,
+    dy: -12,
+    radius: 90,
+    strength: 0.65,
+    mode: "push",
+  });
+  assert.equal(offsets.length, bodyPart.mesh.positions.length);
+  assert.ok(offsets.some((val) => Math.abs(val) > 0.5), "Liquify push stroke must displace vertices inside radius");
 });

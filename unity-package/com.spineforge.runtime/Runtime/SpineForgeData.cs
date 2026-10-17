@@ -56,6 +56,27 @@ namespace SpineForge
     }
 
     [Serializable]
+    public class SfRigEventKey
+    {
+        public float time;
+        public string name;
+        public string stringParam;
+        public float floatParam;
+        public int intParam;
+    }
+
+    [Serializable]
+    public class SfRigSkin
+    {
+        public string name;
+        public string label;
+        public string tint;
+        public string rimColor;
+        public string flashColor;
+        public float weaponScale = 1f;
+    }
+
+    [Serializable]
     public class SfRigClip
     {
         public string name;
@@ -64,6 +85,7 @@ namespace SpineForge
         public bool loop = true;
         public SfRigBoneTrack[] boneTracks;
         public SfRigDrawOrderKey[] drawOrderKeys;
+        public SfRigEventKey[] events;
     }
 
     [Serializable]
@@ -81,6 +103,7 @@ namespace SpineForge
         public int atlasHeight;
         public SfRigBone[] bones;
         public SfRigSubmesh[] submeshes;
+        public SfRigSkin[] skins;
         public SfRigClip[] animations;
     }
 

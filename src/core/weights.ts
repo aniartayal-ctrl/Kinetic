@@ -390,3 +390,58 @@ export function computeVertexHeatmapColors(
   }
   return out;
 }
+
+export type FfdLiquifyMode = "push" | "inflate" | "pinch" | "restore";
+
+/**
+ * Applies a Photoshop Liquify / FFD vertex warp brush stroke (`push`, `inflate`, `pinch`, `restore`)
+ * to `currentOffsets`, returning a new vertex offset array `[dx0, dy0, dx1, dy1, ...]`.
+ */
+export function paintFfdLiquifyStroke(
+  mesh: PartMeshData,
+  currentOffsets: number[] | undefined,
+  stroke: {
+    x: number;
+    y: number;
+    dx: number;
+    dy: number;
+    radius: number;
+    strength: number;
+    mode: FfdLiquifyMode;
+  },
+): number[] {
+  const vCount = mesh.positions.length / 2;
+  const out = currentOffsets && currentOffsets.length === vCount * 2 ? currentOffsets.slice() : new Array<number>(vCount * 2).fill(0);
+  const r = Math.max(4, stroke.radius);
+
+  for (let v = 0; v < vCount; v++) {
+    const vx = mesh.positions[v * 2]! + out[v * 2]!;
+    const vy = mesh.positions[v * 2 + 1]! + out[v * 2 + 1]!;
+    const dist = Math.hypot(vx - stroke.x, vy - stroke.y);
+    if (dist > r) continue;
+
+    const falloff = 1 - smoothstep(0, r, dist);
+    const amount = Math.max(0, Math.min(1, stroke.strength * falloff));
+
+    if (stroke.mode === "push") {
+      out[v * 2] = Number((out[v * 2]! + stroke.dx * amount).toFixed(2));
+      out[v * 2 + 1] = Number((out[v * 2 + 1]! + stroke.dy * amount).toFixed(2));
+    } else if (stroke.mode === "inflate") {
+      const rx = vx - stroke.x;
+      const ry = vy - stroke.y;
+      const len = Math.max(1e-3, Math.hypot(rx, ry));
+      out[v * 2] = Number((out[v * 2]! + (rx / len) * r * 0.14 * amount).toFixed(2));
+      out[v * 2 + 1] = Number((out[v * 2 + 1]! + (ry / len) * r * 0.14 * amount).toFixed(2));
+    } else if (stroke.mode === "pinch") {
+      const rx = stroke.x - vx;
+      const ry = stroke.y - vy;
+      out[v * 2] = Number((out[v * 2]! + rx * 0.22 * amount).toFixed(2));
+      out[v * 2 + 1] = Number((out[v * 2 + 1]! + ry * 0.22 * amount).toFixed(2));
+    } else if (stroke.mode === "restore") {
+      out[v * 2] = Number((out[v * 2]! * (1 - amount)).toFixed(2));
+      out[v * 2 + 1] = Number((out[v * 2 + 1]! * (1 - amount)).toFixed(2));
+    }
+  }
+  return out;
+}
+

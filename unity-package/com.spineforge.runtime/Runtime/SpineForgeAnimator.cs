@@ -14,8 +14,14 @@ namespace SpineForge
     {
         public SpineForgeRigAsset rigAsset;
         public string initialClip = "idle";
+        public string activeSkin = "default";
         public float playbackSpeed = 1f;
         public bool isPlaying = true;
+
+        /// <summary>
+        /// Invoked whenever the playhead crosses an authored AnimationEventKey (e.g. OnHit, SpawnVFX, PlaySFX, CameraShake).
+        /// </summary>
+        public event Action<SfRigEventKey> OnAnimationEvent;
 
         private Mesh _mesh;
         private Vector3[] _bindVertices;
@@ -146,6 +152,7 @@ namespace SpineForge
         private void Update()
         {
             if (!isPlaying || _activeClip == null) return;
+            float prevTime = _currentTime;
             _currentTime += Time.deltaTime * playbackSpeed;
             if (_activeClip.loop && _activeClip.duration > 0f)
             {
@@ -155,7 +162,40 @@ namespace SpineForge
             {
                 _currentTime = Mathf.Clamp(_currentTime, 0f, _activeClip.duration);
             }
+            DispatchEventsBetween(prevTime, _currentTime);
             EvaluateAt(_currentTime);
+        }
+
+        public void SetSkin(string skinName)
+        {
+            activeSkin = skinName;
+            if (rigAsset?.document?.skins == null) return;
+            foreach (var skin in rigAsset.document.skins)
+            {
+                if (string.Equals(skin.name, skinName, StringComparison.OrdinalIgnoreCase))
+                {
+                    var mr = GetComponent<MeshRenderer>();
+                    if (mr != null && mr.sharedMaterial != null && ColorUtility.TryParseHtmlString(skin.tint, out var col))
+                    {
+                        mr.sharedMaterial.color = col;
+                    }
+                    break;
+                }
+            }
+        }
+
+        private void DispatchEventsBetween(float t0, float t1)
+        {
+            if (_activeClip?.events == null || _activeClip.events.Length == 0) return;
+            foreach (var ev in _activeClip.events)
+            {
+                bool crossed = (t1 >= t0) ? (ev.time > t0 && ev.time <= t1) : (ev.time > t0 || ev.time <= t1);
+                if (crossed)
+                {
+                    OnAnimationEvent?.Invoke(ev);
+                    SendMessage(ev.name, ev, SendMessageOptions.DontRequireReceiver);
+                }
+            }
         }
 
         /// <summary>

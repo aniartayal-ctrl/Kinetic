@@ -58,6 +58,23 @@ export type UnitySfRigKeyframe = {
   sy: number;
 };
 
+export type UnitySfRigEventKey = {
+  time: number;
+  name: string;
+  stringParam: string;
+  floatParam: number;
+  intParam: number;
+};
+
+export type UnitySfRigSkin = {
+  name: string;
+  label: string;
+  tint: string;
+  rimColor: string;
+  flashColor: string;
+  weaponScale: number;
+};
+
 export type UnitySfRigClip = {
   name: string;
   duration: number;
@@ -72,6 +89,7 @@ export type UnitySfRigClip = {
     time: number;
     order: string[];
   }[];
+  events: UnitySfRigEventKey[];
 };
 
 export type UnitySfRigDocument = {
@@ -87,6 +105,7 @@ export type UnitySfRigDocument = {
   atlasHeight: number;
   bones: UnitySfRigBone[];
   submeshes: UnitySfRigSubmesh[];
+  skins: UnitySfRigSkin[];
   animations: UnitySfRigClip[];
 };
 
@@ -229,8 +248,36 @@ export function exportUnityCustomRig(
       loop: rawClip.loop,
       boneTracks,
       drawOrderKeys,
+      events: (rawClip.events ?? []).map((ev) => ({
+        time: round5(ev.time),
+        name: ev.name,
+        stringParam: ev.stringParam ?? "",
+        floatParam: round5(ev.floatParam ?? 0),
+        intParam: ev.intParam ?? 0,
+      })),
     });
   }
+
+  const skins: UnitySfRigSkin[] =
+    project.skins && project.skins.length > 0
+      ? project.skins.map((s) => ({
+          name: s.name,
+          label: s.label,
+          tint: s.tint,
+          rimColor: s.rimColor,
+          flashColor: s.flashColor,
+          weaponScale: s.weaponScale ?? 1.0,
+        }))
+      : [
+          {
+            name: "default",
+            label: "Default",
+            tint: "#ffffff",
+            rimColor: project.palette.rim,
+            flashColor: project.palette.flash,
+            weaponScale: 1.0,
+          },
+        ];
 
   return {
     format: "SpineForgeUnityRig",
@@ -245,6 +292,7 @@ export function exportUnityCustomRig(
     atlasHeight: atlas.height,
     bones,
     submeshes,
+    skins,
     animations,
   };
 }

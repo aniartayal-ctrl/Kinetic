@@ -734,6 +734,10 @@ export function generateProceduralClips(
         { time: 0.72, flash: 0.45, shake: 0, keyPose: 0 },
         { time: 1.5, flash: 0, shake: 0, keyPose: 0 },
       ],
+      events: [
+        { time: 0.3, name: "PlaySFX", stringParam: "sfx_cheer_whoosh", floatParam: 0.8 },
+        { time: 0.42, name: "SpawnVFX", stringParam: "vfx_gold_sparks", floatParam: 1.0 },
+      ],
     },
     strike: {
       name: "strike",
@@ -745,6 +749,11 @@ export function generateProceduralClips(
         { time: 0, flash: 0, shake: 0, keyPose: 0 },
         { time: 0.85, flash: 1.0, shake: 1.0, keyPose: 0 },
         { time: 1.4, flash: 0, shake: 0, keyPose: 0 },
+      ],
+      events: [
+        { time: 0.28, name: "PlaySFX", stringParam: "sfx_weapon_windup", floatParam: 0.7 },
+        { time: 0.85, name: "OnHit", stringParam: "impact_heavy_slam", floatParam: 1.0, intParam: 1 },
+        { time: 0.88, name: "CameraShake", stringParam: "heavy", floatParam: 0.9 },
       ],
     },
     power: {
@@ -758,6 +767,10 @@ export function generateProceduralClips(
         { time: 0.48, flash: 0.65, shake: 0.6, keyPose: 0 },
         { time: 1.08, flash: 1.0, shake: 0.4, keyPose: 0 },
         { time: 1.9, flash: 0, shake: 0, keyPose: 0 },
+      ],
+      events: [
+        { time: 0.48, name: "OnHit", stringParam: "impact_first_wave", floatParam: 0.75, intParam: 1 },
+        { time: 1.06, name: "SpawnVFX", stringParam: "vfx_super_aura_burst", floatParam: 1.0, intParam: 2 },
       ],
     },
     triumph: {
@@ -773,6 +786,10 @@ export function generateProceduralClips(
         { time: 1.9, flash: 1.0, shake: 0, keyPose: 0 },
         { time: 2.5, flash: 0, shake: 0, keyPose: 0 },
       ],
+      events: [
+        { time: 0.42, name: "SpawnVFX", stringParam: "vfx_sensational_supernova", floatParam: 1.0, intParam: 3 },
+        { time: 0.47, name: "CameraShake", stringParam: "mega_burst", floatParam: 1.0 },
+      ],
     },
     bow: {
       name: "bow",
@@ -785,6 +802,7 @@ export function generateProceduralClips(
         { time: 0.5, flash: 0.3, shake: 0, keyPose: 0 },
         { time: 1.1, flash: 0, shake: 0, keyPose: 0 },
       ],
+      events: [{ time: 0.5, name: "PlaySFX", stringParam: "sfx_armor_bow", floatParam: 0.6 }],
     },
   };
 }

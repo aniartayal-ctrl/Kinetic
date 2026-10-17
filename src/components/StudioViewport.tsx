@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { SpineForgeAnimator } from "@/core/animator";
 import { RIG_BONE_PALETTE } from "@/core/schema";
 import { applyAffine, buildSkeleton, deformMeshVerticesCPU } from "@/core/solver";
-import { SpineForgeWebGLRenderer } from "@/core/webgl-renderer";
+import { SpineForgeWebGLRenderer, type GhostFramePass } from "@/core/webgl-renderer";
 import { buildPartMesh, computeVertexHeatmapColors } from "@/core/weights";
 import { useStudioStore } from "@/store/useStudioStore";
 
@@ -21,6 +21,7 @@ export function StudioViewport() {
     selectBone,
     updateBone,
     applyWeightBrush,
+    applyLiquifyBrush,
     setBoneKeyframeAtCurrentTime,
     setCurrentTime,
   } = useStudioStore();
@@ -29,7 +30,9 @@ export function StudioViewport() {
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineForgeWebGLRenderer | null>(null);
   const animatorRef = useRef<SpineForgeAnimator | null>(null);
+  const ghostAnimatorRef = useRef<SpineForgeAnimator | null>(null);
   const pointerRigPosRef = useRef<{ x: number; y: number } | null>(null);
+  const lastBrushRigPosRef = useRef<{ x: number; y: number } | null>(null);
   const draggingBoneRef = useRef<{
     boneName: string;
     startRigX: number;
@@ -71,6 +74,7 @@ export function StudioViewport() {
       });
       rendererRef.current = renderer;
       animatorRef.current = new SpineForgeAnimator(project, activeClip);
+      ghostAnimatorRef.current = new SpineForgeAnimator(project, activeClip);
       setLoadedProjectId(project.id + ":" + project.parts.length);
     });
 
@@ -94,6 +98,7 @@ export function StudioViewport() {
       renderer.updatePartWeightsAndHeatmap(part.name, mesh, heat);
     }
     animatorRef.current = new SpineForgeAnimator(project, activeClip);
+    ghostAnimatorRef.current = new SpineForgeAnimator(project, activeClip);
   }, [project, selectedBone, heatmapSingleBone, activeClip, loadedProjectId]);
 
   // Main render & animation loop
@@ -108,6 +113,7 @@ export function StudioViewport() {
       const store = useStudioStore.getState();
       const renderer = rendererRef.current;
       const animator = animatorRef.current;
+      const ghostAnim = ghostAnimatorRef.current;
       const overlay = overlayCanvasRef.current;
 
       if (renderer && animator && overlay) {
@@ -121,6 +127,27 @@ export function StudioViewport() {
           evalTime = 0;
         }
 
+        // Compute Onion-Skinning ghost passes if enabled
+        const ghostFrames: GhostFramePass[] = [];
+        if (store.showOnionSkin && ghostAnim && store.mode !== "rig" && store.mode !== "mesh") {
+          ghostAnim.setClip(store.activeClip);
+          const prevFrame = ghostAnim.evaluateAt(
+            ((evalTime - 0.14) % duration + duration) % duration,
+            0,
+          );
+          const prevSkin = new Float32Array(prevFrame.skin);
+          const prevOrder = prevFrame.order.filter((n) => !store.hiddenParts.includes(n));
+
+          const nextFrame = ghostAnim.evaluateAt((evalTime + 0.14) % duration, 0);
+          const nextSkin = new Float32Array(nextFrame.skin);
+          const nextOrder = nextFrame.order.filter((n) => !store.hiddenParts.includes(n));
+
+          ghostFrames.push(
+            { skin: prevSkin, order: prevOrder, tint: [0.15, 0.85, 1.0, 0.22] },
+            { skin: nextSkin, order: nextOrder, tint: [1.0, 0.38, 0.78, 0.18] },
+          );
+        }
+
         animator.setClip(store.activeClip);
         const frame = animator.evaluateAt(
           evalTime,
@@ -128,6 +155,13 @@ export function StudioViewport() {
         );
 
         const visibleOrder = frame.order.filter((name) => !store.hiddenParts.includes(name));
+        const activeSkinObj = store.project.skins?.find((s) => s.name === store.activeSkinName);
+        const lightRad = (store.lightAngleDeg * Math.PI) / 180;
+        const lightDir: [number, number, number] = [
+          Math.cos(lightRad) * 0.75,
+          Math.sin(lightRad) * 0.75,
+          0.68,
+        ];
 
         renderer.draw({
           skin: frame.skin,
@@ -137,9 +171,15 @@ export function StudioViewport() {
           heatmapMix: store.showHeatmap ? 0.78 : 0,
           selectedPart: store.selectedPart,
           isolateSelectedPart: store.isolatePart,
+          skinTintHex: activeSkinObj?.tint,
+          rimHex: activeSkinObj?.rimColor,
+          flashHex: activeSkinObj?.flashColor,
+          lightDir,
+          lightIntensity: store.enable3DRelight ? store.lightIntensity : 0,
+          ghostFrames,
         });
 
-        // Draw 2D gizmo overlay (wireframe, capsules, bones, brush cursor)
+        // Draw 2D gizmo overlay (wireframe, motion arcs, weapon slash trails, capsules, bones, brush cursor)
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const w = Math.max(1, Math.round(overlay.clientWidth * dpr));
         const h = Math.max(1, Math.round(overlay.clientHeight * dpr));
@@ -155,6 +195,74 @@ export function StudioViewport() {
           rx * scale + offsetX,
           ry * scale + offsetY,
         ];
+
+        // 0A. Weapon Slash Ribbon Trail (when showSlashTrail is active during action clips)
+        if (store.showSlashTrail && ghostAnim && store.activeClip !== "idle" && store.mode === "animate") {
+          const weaponIdx = store.project.bones.findIndex((b) => b.name === "weapon");
+          if (weaponIdx >= 0) {
+            const trailSteps = 10;
+            const spanSec = 0.18;
+            const outerPts: [number, number][] = [];
+            const innerPts: [number, number][] = [];
+            ghostAnim.setClip(store.activeClip);
+            for (let s = 0; s <= trailSteps; s++) {
+              const sampleT = Math.max(0, evalTime - ((trailSteps - s) / trailSteps) * spanSec);
+              const tf = ghostAnim.evaluateAt(sampleT, 0);
+              const wMat = tf.world[weaponIdx]!;
+              const tipLen = 0.24 * store.project.height;
+              const baseLen = 0.08 * store.project.height;
+              const [ox, oy] = applyAffine(wMat, 0, tipLen);
+              const [ix, iy] = applyAffine(wMat, 0, baseLen);
+              outerPts.push(toScreen(ox, oy));
+              innerPts.push(toScreen(ix, iy));
+            }
+            if (outerPts.length >= 2) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.moveTo(outerPts[0]![0], outerPts[0]![1]);
+              for (let i = 1; i < outerPts.length; i++) ctx.lineTo(outerPts[i]![0], outerPts[i]![1]);
+              for (let i = innerPts.length - 1; i >= 0; i--) ctx.lineTo(innerPts[i]![0], innerPts[i]![1]);
+              ctx.closePath();
+              const grad = ctx.createLinearGradient(
+                outerPts[0]![0],
+                outerPts[0]![1],
+                outerPts[outerPts.length - 1]![0],
+                outerPts[outerPts.length - 1]![1],
+              );
+              grad.addColorStop(0, "rgba(56, 189, 248, 0.0)");
+              grad.addColorStop(0.6, "rgba(56, 189, 248, 0.24)");
+              grad.addColorStop(1, "rgba(250, 204, 21, 0.55)");
+              ctx.fillStyle = grad;
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+        }
+
+        // 0B. Selected Bone Motion Arc Trajectory (when showMotionArcs is active)
+        if (store.showMotionArcs && ghostAnim && store.selectedBone) {
+          const selIdx = store.project.bones.findIndex((b) => b.name === store.selectedBone);
+          if (selIdx > 0) {
+            const arcSteps = 28;
+            ctx.save();
+            ctx.strokeStyle = "rgba(250, 204, 21, 0.65)";
+            ctx.lineWidth = 1.6;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ghostAnim.setClip(store.activeClip);
+            for (let s = 0; s <= arcSteps; s++) {
+              const st = (s / arcSteps) * duration;
+              const af = ghostAnim.evaluateAt(st, 0);
+              const m = af.world[selIdx]!;
+              const [sx, sy] = toScreen(m[4], m[5]);
+              if (s === 0) ctx.moveTo(sx, sy);
+              else ctx.lineTo(sx, sy);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+          }
+        }
 
         // 1. Draw Delaunay Mesh Wireframe
         if (store.showMeshWireframe) {
@@ -183,7 +291,7 @@ export function StudioViewport() {
             }
             ctx.stroke();
 
-            if (isSelectedPart && (store.mode === "mesh" || store.mode === "weights")) {
+            if (isSelectedPart && (store.mode === "mesh" || store.mode === "weights" || store.mode === "liquify")) {
               const vCount = deformed.length / 2;
               for (let v = 0; v < vCount; v++) {
                 const [vx, vy] = toScreen(deformed[v * 2]!, deformed[v * 2 + 1]!);
@@ -282,16 +390,18 @@ export function StudioViewport() {
           });
         }
 
-        // 4. Draw Weight Brush Cursor when in Weight Painter mode
-        if (store.mode === "weights" && pointerRigPosRef.current) {
+        // 4. Draw Brush Cursor when in Weight Painter or Liquify FFD mode
+        if ((store.mode === "weights" || store.mode === "liquify") && pointerRigPosRef.current) {
           const [cx, cy] = toScreen(pointerRigPosRef.current.x, pointerRigPosRef.current.y);
           const rScreen = store.brushRadius * scale;
           ctx.strokeStyle =
-            store.brushMode === "subtract"
-              ? "#fb7185"
-              : store.brushMode === "smooth"
-                ? "#38bdf8"
-                : "#34d399";
+            store.mode === "liquify"
+              ? "#c084fc"
+              : store.brushMode === "subtract"
+                ? "#fb7185"
+                : store.brushMode === "smooth"
+                  ? "#38bdf8"
+                  : "#34d399";
           ctx.lineWidth = 2.2;
           ctx.beginPath();
           ctx.arc(cx, cy, rScreen, 0, Math.PI * 2);
@@ -325,11 +435,19 @@ export function StudioViewport() {
     const pt = eventToRigCoords(e);
     if (!pt) return;
     pointerRigPosRef.current = pt;
+    lastBrushRigPosRef.current = pt;
 
     if (mode === "weights" && selectedPart) {
       isPaintingRef.current = true;
       e.currentTarget.setPointerCapture(e.pointerId);
       applyWeightBrush(selectedPart, pt.x, pt.y);
+      return;
+    }
+
+    if (mode === "liquify" && selectedPart) {
+      isPaintingRef.current = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      applyLiquifyBrush(selectedPart, pt.x, pt.y, 0, 0);
       return;
     }
 
@@ -369,10 +487,17 @@ export function StudioViewport() {
   const handlePointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const pt = eventToRigCoords(e);
     if (!pt) return;
+    const prevPt = lastBrushRigPosRef.current ?? pt;
     pointerRigPosRef.current = pt;
+    lastBrushRigPosRef.current = pt;
 
     if (isPaintingRef.current && mode === "weights" && selectedPart) {
       applyWeightBrush(selectedPart, pt.x, pt.y);
+      return;
+    }
+
+    if (isPaintingRef.current && mode === "liquify" && selectedPart) {
+      applyLiquifyBrush(selectedPart, pt.x, pt.y, pt.x - prevPt.x, pt.y - prevPt.y);
       return;
     }
 
@@ -425,7 +550,7 @@ export function StudioViewport() {
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
         className={`absolute inset-0 w-full h-full ${
-          mode === "weights" ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"
+          mode === "weights" || mode === "liquify" ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"
         }`}
       />
     </div>

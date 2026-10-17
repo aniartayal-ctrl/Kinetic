@@ -408,6 +408,15 @@ public final class MacStudioViewModel: ObservableObject {
         statusMessage = "Synthesized 6 procedural clips (idle, cheer, strike, power, triumph, bow) natively"
     }
 
+    public func runAppleVisionAutoRig() {
+        guard let renderer = renderer else { return }
+        let msg = MetalAutoRigger.autoRigOnAppleSilicon(renderer: renderer)
+        self.project = renderer.solver.project
+        syncHeatmaps()
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+        statusMessage = msg
+    }
+
     public func bakeAndExportOnMetal(revealInFinder: Bool = true) {
         guard let renderer = renderer else { return }
         let outDir = workspaceRootURL.appendingPathComponent("exports/\(project.id)")
@@ -691,6 +700,11 @@ public struct SpineForgeMainStudioView: View {
                     }
                     .labelsHidden()
                     .frame(width: 200)
+
+                    Button("1-Click Auto-Rig") {
+                        vm.runAppleVisionAutoRig()
+                    }
+                    .controlSize(.small)
 
                     Button("Open...") {
                         vm.openProjectDialog()

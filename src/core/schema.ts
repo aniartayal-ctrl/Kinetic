@@ -165,6 +165,31 @@ export type FxKey = {
   curve?: CurveType;
 };
 
+export type AnimationEventKey = {
+  time: number;
+  /** Unity AnimationEvent / Spine event name (e.g. "OnHit", "SpawnVFX", "PlaySFX", "CameraShake"). */
+  name: string;
+  /** Optional string payload (e.g. "fx_star_slam"). */
+  stringParam?: string;
+  /** Optional float payload (e.g. shake intensity 0.85). */
+  floatParam?: number;
+  /** Optional int payload (e.g. tier index 2). */
+  intParam?: number;
+};
+
+export type RigSkinVariant = {
+  name: string;
+  label: string;
+  /** Primary color tint (#rrggbb). */
+  tint: string;
+  /** Rim light color override (#rrggbb). */
+  rimColor: string;
+  /** Power flash color override (#rrggbb). */
+  flashColor: string;
+  /** Optional weapon/part scale multiplier for evolving symbols/tiers. */
+  weaponScale?: number;
+};
+
 export type AnimationClip = {
   name: string;
   /** Clip duration in seconds. */
@@ -183,6 +208,8 @@ export type AnimationClip = {
   drawOrderTrack?: DrawOrderKey[];
   /** Optional shader flash / shake / keyPose swap track. */
   fxTrack?: FxKey[];
+  /** Optional Unity AnimationEvent & Spine Event triggers along the timeline. */
+  events?: AnimationEventKey[];
 };
 
 export type SpineForgeProject = {
@@ -215,6 +242,8 @@ export type SpineForgeProject = {
   ikConstraints: RigIkConstraint[];
   /** Back-to-front cut-out parts. */
   parts: RigPart[];
+  /** Optional multi-skin / evolving tier wardrobe (Tier 1 Base, Tier 2 Awakened, Tier 3 Ascended). */
+  skins?: RigSkinVariant[];
   /** Optional painted victory key pose swapped at peak flash. */
   keyPose?: {
     src: string;

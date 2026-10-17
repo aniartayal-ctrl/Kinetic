@@ -62,6 +62,10 @@ export function AiAgentPanel({ onTriggerExport }: { onTriggerExport: () => Promi
     setBoneKeyframeAtCurrentTime,
     regenerateAllProceduralClips,
     bakeCurrentClipSprings,
+    runOneClickAutoRig,
+    setActiveSkin,
+    addAnimationEventAtCurrentTime,
+    setLightParams,
   } = useStudioStore();
 
   const [provider, setProvider] = useState<AiProviderId>("cursor");
@@ -138,6 +142,32 @@ export function AiAgentPanel({ onTriggerExport }: { onTriggerExport: () => Promi
           break;
         case "trigger_unity_export":
           await onTriggerExport();
+          break;
+        case "auto_rig_project":
+          runOneClickAutoRig();
+          break;
+        case "set_skin_variant":
+          setActiveSkin(act.args.skinName);
+          break;
+        case "add_animation_event":
+          addAnimationEventAtCurrentTime(act.args.name, act.args.stringParam, act.args.floatParam);
+          break;
+        case "configure_3d_relight":
+          setLightParams(act.args.angleDeg, act.args.intensity);
+          if (!useStudioStore.getState().enable3DRelight && act.args.enabled) {
+            useStudioStore.getState().toggleOverlay("enable3DRelight");
+          }
+          break;
+        case "toggle_onion_skin_and_arcs":
+          if (useStudioStore.getState().showOnionSkin !== act.args.onionSkin) {
+            useStudioStore.getState().toggleOverlay("showOnionSkin");
+          }
+          if (useStudioStore.getState().showMotionArcs !== act.args.motionArcs) {
+            useStudioStore.getState().toggleOverlay("showMotionArcs");
+          }
+          if (useStudioStore.getState().showSlashTrail !== act.args.slashTrail) {
+            useStudioStore.getState().toggleOverlay("showSlashTrail");
+          }
           break;
       }
     }

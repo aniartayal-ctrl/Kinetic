@@ -79,6 +79,31 @@ export type AgentToolAction =
       tool: "trigger_unity_export";
       args: { format: "all" | "spine42" | "unity_sfrig" | "spritesheet" };
       summary: string;
+    }
+  | {
+      tool: "auto_rig_project";
+      args: Record<string, never>;
+      summary: string;
+    }
+  | {
+      tool: "set_skin_variant";
+      args: { skinName: "default" | "awakened" | "ascended" };
+      summary: string;
+    }
+  | {
+      tool: "add_animation_event";
+      args: { name: string; stringParam: string; floatParam: number };
+      summary: string;
+    }
+  | {
+      tool: "configure_3d_relight";
+      args: { enabled: boolean; angleDeg: number; intensity: number };
+      summary: string;
+    }
+  | {
+      tool: "toggle_onion_skin_and_arcs";
+      args: { onionSkin: boolean; motionArcs: boolean; slashTrail: boolean };
+      summary: string;
     };
 
 const SYSTEM_PROMPT = `You are the built-in AI Technical Artist & Rigging Agent inside Kinetic Pro (SpineForge), a 2D Delaunay Mesh, Skeletal Rigging, Weight-Painting, and Unity/Spine 4.2 Animation Studio.
@@ -270,6 +295,55 @@ function runLocalAgentPlanner(
     notes.push(
       "Triggered the **3-Way Unity & Spine 4.2 Export Pipeline** (`.sfrig.json` zero-dependency Unity rig, `.spine.json` + `.atlas.txt`, and Metal-baked flipbook sprite sheet).",
     );
+  }
+
+  // 8. 1-Click AI Auto-Rig command
+  if (q.includes("auto-rig") || q.includes("autorig") || q.includes("auto rig")) {
+    actions.push({
+      tool: "auto_rig_project",
+      args: {},
+      summary: "Executed 1-Click AI Auto-Rigger (Pose Landmarks + Capsule Envelopes + Delaunay Meshes + 6 Clips)",
+    });
+    notes.push("Ran **1-Click AI Auto-Rigger**: placed anatomical bone pivots, bound parts, solved Delaunay meshes, and generated all 6 clips.");
+  }
+
+  // 9. Multi-Skin / Tier Wardrobe command
+  if (q.includes("tier") || q.includes("awakened") || q.includes("ascended") || q.includes("wardrobe")) {
+    const skinName = q.includes("3") || q.includes("ascend") ? "ascended" : q.includes("2") || q.includes("awaken") ? "awakened" : "default";
+    actions.push({
+      tool: "set_skin_variant",
+      args: { skinName },
+      summary: `Switched Multi-Skin Wardrobe to '${skinName}'`,
+    });
+    notes.push(`Switched active character skin variant to **${skinName}**.`);
+  }
+
+  // 10. 3D Normal-Map Relight / Onion Skin / Motion Arcs / Event Triggers
+  if (q.includes("relight") || q.includes("light") || q.includes("normal")) {
+    actions.push({
+      tool: "configure_3d_relight",
+      args: { enabled: true, angleDeg: -42, intensity: 0.78 },
+      summary: "Enabled 3D Normal-Map Point Relighting (-42°, 78% intensity)",
+    });
+    notes.push("Enabled **Real-Time 3D Normal-Map Point Relighting** on the GPU.");
+  }
+
+  if (q.includes("onion") || q.includes("ghost") || q.includes("arc") || q.includes("trail") || q.includes("slash")) {
+    actions.push({
+      tool: "toggle_onion_skin_and_arcs",
+      args: { onionSkin: true, motionArcs: true, slashTrail: true },
+      summary: "Enabled Onion-Skinning ghost frames, Motion Arcs, and Weapon Slash Ribbon",
+    });
+    notes.push("Enabled **Onion-Skinning ghost frames**, **Motion Arc trajectories**, and **Weapon Slash Ribbon trails**.");
+  }
+
+  if (q.includes("event") || q.includes("onhit") || q.includes("sfx") || q.includes("vfx")) {
+    actions.push({
+      tool: "add_animation_event",
+      args: { name: "OnHit", stringParam: "vfx_heavy_impact", floatParam: 1.0 },
+      summary: "Added Unity AnimationEvent 'OnHit' ('vfx_heavy_impact') at current playhead",
+    });
+    notes.push("Added Unity `AnimationEvent` trigger **`OnHit`** (`vfx_heavy_impact`) at the current timeline playhead.");
   }
 
   // Default full auto-rig + optimize pipeline if prompt is general (e.g. "auto rig this character for Unity")

@@ -10,7 +10,7 @@
 		</data>
 		<key>Resources/presets/astral-forge/astral-forge.project.json</key>
 		<data>
-		NNDa+wPrk9bNwwC3kKdk+QcrnTw=
+		j7Nv5287JF0G8NK/ssUDPGeCzeg=
 		</data>
 		<key>Resources/presets/astral-forge/hero.webp</key>
 		<data>
@@ -86,7 +86,7 @@
 		</data>
 		<key>Resources/presets/sands-of-solara/sands-of-solara.project.json</key>
 		<data>
-		SFmGBjwqGaQKdxIxbVGl23Lcfiw=
+		3HTjZnPYKAsjhlBRfWRa08AXikM=
 		</data>
 	</dict>
 	<key>files2</key>
@@ -95,10 +95,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			FP1csXKUUdNs4V0HY5fTkzdji9g=
+			8UjK8HLC2Q3Ta4ydakVeKjhBF8w=
 			</data>
 			<key>requirement</key>
-			<string>cdhash H"14fd5cb1729451d36ce15d076397d39337638bd8"</string>
+			<string>cdhash H"f148caf072c2d90dd36b8c9d6a455e2a384117cc"</string>
 		</dict>
 		<key>Resources/AppIcon.icns</key>
 		<dict>
@@ -111,7 +111,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			x463Kq82lWwRhr4E40PyZhI23oQFAJEo3cHRBm/JauU=
+			oudYrERy0D1X03UtyoQYCenqPX9svLQjDbwewEpnecQ=
 			</data>
 		</dict>
 		<key>Resources/presets/astral-forge/hero.webp</key>
@@ -244,7 +244,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			AJ5AiyQtEcZzMJDrlIfyNl+YLxsO4ko+PnJ/DKTRkk8=
+			bpwFE9qP6OssUlZ3BA2UAtafjcCfST+dwK62Lbp6Q4o=
 			</data>
 		</dict>
 	</dict>

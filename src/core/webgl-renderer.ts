@@ -1,10 +1,12 @@
 /**
- * WebGL2 Skinning + FFD + Heatmap Renderer (`src/core/webgl-renderer.ts`)
+ * WebGL2 Skinning + FFD + Heatmap + 3D Normal-Map Relighting + Onion-Skin Renderer (`src/core/webgl-renderer.ts`)
  *
  * Renders:
  * 1. Premultiplied 4-bone Linear Blend Skinning (LBS) + per-vertex FFD offsets (`aDeform`)
- * 2. Optional live weight-painting thermal/bone heatmap blend (`uHeatmapMix`)
- * 3. Additive power flash and rim light
+ * 2. Real-time 3D Normal-Map Point Relighting (`uLightDir`, `uLightIntensity`, `uTexel`) via Sobel alpha/luma gradients
+ * 3. Multi-Skin Wardrobe Tint (`uSkinTint`) + Rim (`uRim`) + Power Flash (`uFlashTint`)
+ * 4. Onion-Skinning Ghost Frames (`uGhostTint`) for previous/next frame animation spacing
+ * 5. Live GPU weight-painting thermal/bone heatmap blend (`uHeatmapMix`)
  */
 
 import { buildPartMesh } from "./weights";
@@ -51,14 +53,51 @@ in vec4 vHeatColor;
 uniform sampler2D uTex;
 uniform vec3 uRim;
 uniform vec3 uFlashTint;
+uniform vec3 uSkinTint;
+uniform vec4 uGhostTint;
+uniform vec3 uLightDir;
+uniform float uLightIntensity;
+uniform vec2 uTexel;
 uniform float uFlash;
 uniform float uHeatmapMix;
 uniform float uPartOpacity;
 
 out vec4 outColor;
 
+float heightSample(vec2 uv) {
+  vec4 s = texture(uTex, uv);
+  return (dot(s.rgb, vec3(0.299, 0.587, 0.114)) * 0.65 + s.a * 0.35);
+}
+
 void main() {
   vec4 c = texture(uTex, vUv);
+  if (c.a < 0.005) discard;
+
+  // Onion-skin ghost pass
+  if (uGhostTint.a > 0.01) {
+    float ga = c.a * uGhostTint.a;
+    outColor = vec4(uGhostTint.rgb * ga, ga);
+    return;
+  }
+
+  // Apply Multi-Skin Wardrobe tint
+  c.rgb *= uSkinTint;
+
+  // Real-time 3D Normal-Map Relighting from Sobel height/alpha gradient
+  if (uLightIntensity > 0.01) {
+    float hL = heightSample(vUv - vec2(uTexel.x * 2.0, 0.0));
+    float hR = heightSample(vUv + vec2(uTexel.x * 2.0, 0.0));
+    float hU = heightSample(vUv - vec2(0.0, uTexel.y * 2.0));
+    float hD = heightSample(vUv + vec2(0.0, uTexel.y * 2.0));
+    vec3 norm = normalize(vec3((hL - hR) * 3.2, (hU - hD) * 3.2, 1.0));
+    vec3 L = normalize(uLightDir);
+    float ndotl = max(0.18, dot(norm, L));
+    vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
+    float spec = pow(max(0.0, dot(norm, H)), 20.0) * 0.45 * c.a;
+    vec3 litRgb = c.rgb * (0.55 + 0.75 * ndotl) + uRim * spec;
+    c.rgb = mix(c.rgb, litRgb, uLightIntensity);
+  }
+
   c.rgb += uFlashTint * uFlash * 0.25 * c.a;
   if (uHeatmapMix > 0.01 && c.a > 0.02) {
     vec3 heatPremult = vHeatColor.rgb * c.a;
@@ -96,6 +135,14 @@ type PartGlState = {
   indexCount: number;
   vertexCount: number;
   texture: WebGLTexture;
+  texel: [number, number];
+};
+
+export type GhostFramePass = {
+  skin: Float32Array;
+  order: readonly string[];
+  /** Premultiplied ghost tint [r, g, b, opacity]. */
+  tint: [number, number, number, number];
 };
 
 export class SpineForgeWebGLRenderer {
@@ -130,16 +177,31 @@ export class SpineForgeWebGLRenderer {
     this.program = program;
 
     this.uniforms = Object.fromEntries(
-      ["uBones", "uView", "uTex", "uRim", "uFlashTint", "uFlash", "uHeatmapMix", "uPartOpacity"].map((n) => [
-        n,
-        gl.getUniformLocation(program, n),
-      ]),
+      [
+        "uBones",
+        "uView",
+        "uTex",
+        "uRim",
+        "uFlashTint",
+        "uSkinTint",
+        "uGhostTint",
+        "uLightDir",
+        "uLightIntensity",
+        "uTexel",
+        "uFlash",
+        "uHeatmapMix",
+        "uPartOpacity",
+      ].map((n) => [n, gl.getUniformLocation(program, n)]),
     );
 
     gl.useProgram(program);
     gl.uniform1i(this.uniforms.uTex!, 0);
     gl.uniform3fv(this.uniforms.uRim!, hexToRgbNorm(skeleton.project.palette.rim));
     gl.uniform3fv(this.uniforms.uFlashTint!, hexToRgbNorm(skeleton.project.palette.flash));
+    gl.uniform3fv(this.uniforms.uSkinTint!, [1, 1, 1]);
+    gl.uniform4fv(this.uniforms.uGhostTint!, [0, 0, 0, 0]);
+    gl.uniform3fv(this.uniforms.uLightDir!, [0.35, -0.45, 0.82]);
+    gl.uniform1f(this.uniforms.uLightIntensity!, 0);
 
     this.rebuildParts(skeleton.project, images);
   }
@@ -192,6 +254,9 @@ export class SpineForgeWebGLRenderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
+      const imgW = "naturalWidth" in image ? image.naturalWidth || image.width : image.width;
+      const imgH = "naturalHeight" in image ? image.naturalHeight || image.height : image.height;
+
       this.parts.set(part.name, {
         name: part.name,
         mesh,
@@ -205,6 +270,7 @@ export class SpineForgeWebGLRenderer {
         indexCount: mesh.indices.length,
         vertexCount: vCount,
         texture,
+        texel: [1 / Math.max(1, imgW), 1 / Math.max(1, imgH)],
       });
     }
   }
@@ -224,9 +290,6 @@ export class SpineForgeWebGLRenderer {
     }
   }
 
-  /**
-   * Computes the viewport transform mapping rig pixel coordinates `(0..artW, 0..artH)` into canvas pixels.
-   */
   getViewMetrics(width: number, height: number) {
     const { width: artW, height: artH, frame } = this.skeleton.project;
     const leftM = frame.left ?? 0.25;
@@ -250,6 +313,12 @@ export class SpineForgeWebGLRenderer {
     selectedPart?: string | null;
     isolateSelectedPart?: boolean;
     fixedSize?: { width: number; height: number };
+    skinTintHex?: string;
+    rimHex?: string;
+    flashHex?: string;
+    lightDir?: [number, number, number];
+    lightIntensity?: number;
+    ghostFrames?: GhostFramePass[];
   }): void {
     const { gl, canvas } = this;
     const width = options.fixedSize
@@ -273,7 +342,6 @@ export class SpineForgeWebGLRenderer {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
     gl.useProgram(this.program);
-    gl.uniform4fv(this.uniforms.uBones!, options.skin);
     gl.uniform4f(
       this.uniforms.uView!,
       (2 * scale) / width,
@@ -281,10 +349,46 @@ export class SpineForgeWebGLRenderer {
       (2 * offsetX) / width - 1,
       1 - (2 * offsetY) / height,
     );
-    gl.uniform1f(this.uniforms.uFlash!, options.flash ?? 0);
 
     gl.activeTexture(gl.TEXTURE0);
     const drawList = options.order ?? Array.from(this.parts.keys());
+
+    // 1. Render Onion-Skin Ghost Frames first (behind main character)
+    if (options.ghostFrames && options.ghostFrames.length > 0) {
+      gl.uniform1f(this.uniforms.uHeatmapMix!, 0);
+      gl.uniform1f(this.uniforms.uLightIntensity!, 0);
+      gl.uniform1f(this.uniforms.uPartOpacity!, 1.0);
+      for (const ghost of options.ghostFrames) {
+        gl.uniform4fv(this.uniforms.uBones!, ghost.skin);
+        gl.uniform4fv(this.uniforms.uGhostTint!, ghost.tint);
+        for (const name of ghost.order) {
+          const part = this.parts.get(name);
+          if (!part) continue;
+          gl.bindTexture(gl.TEXTURE_2D, part.texture);
+          gl.bindVertexArray(part.vao);
+          gl.drawElements(gl.TRIANGLES, part.indexCount, gl.UNSIGNED_SHORT, 0);
+        }
+      }
+      gl.uniform4fv(this.uniforms.uGhostTint!, [0, 0, 0, 0]);
+    }
+
+    // 2. Render Main Live Character Pass
+    gl.uniform4fv(this.uniforms.uBones!, options.skin);
+    gl.uniform1f(this.uniforms.uFlash!, options.flash ?? 0);
+    gl.uniform3fv(
+      this.uniforms.uSkinTint!,
+      options.skinTintHex ? hexToRgbNorm(options.skinTintHex) : [1, 1, 1],
+    );
+    gl.uniform3fv(
+      this.uniforms.uRim!,
+      hexToRgbNorm(options.rimHex ?? this.skeleton.project.palette.rim),
+    );
+    gl.uniform3fv(
+      this.uniforms.uFlashTint!,
+      hexToRgbNorm(options.flashHex ?? this.skeleton.project.palette.flash),
+    );
+    gl.uniform3fv(this.uniforms.uLightDir!, options.lightDir ?? [0.35, -0.45, 0.82]);
+    gl.uniform1f(this.uniforms.uLightIntensity!, options.lightIntensity ?? 0);
 
     for (const name of drawList) {
       const part = this.parts.get(name);
@@ -300,6 +404,7 @@ export class SpineForgeWebGLRenderer {
           ? (options.heatmapMix ?? 0)
           : 0;
       gl.uniform1f(this.uniforms.uHeatmapMix!, showHeat);
+      gl.uniform2f(this.uniforms.uTexel!, part.texel[0], part.texel[1]);
 
       const deform = options.deforms?.[name];
       gl.bindBuffer(gl.ARRAY_BUFFER, part.deformBuffer);

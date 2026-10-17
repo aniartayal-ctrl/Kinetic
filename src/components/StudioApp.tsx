@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  EASE_BACK_OUT,
+  EASE_POWER2_IN,
+  EASE_POWER2_IN_OUT,
+  EASE_SINE_IN_OUT,
+  sampleTransformTrack,
+} from "@/core/animator";
 import { BUILTIN_PRESETS } from "@/core/presets";
-import { RIG_BONE_PALETTE } from "@/core/schema";
-import { sampleTransformTrack } from "@/core/animator";
-import type { AutoWeightMode, WeightBrushMode } from "@/core/weights";
+import { RIG_BONE_PALETTE, type CurveType } from "@/core/schema";
+import type { AutoWeightMode, FfdLiquifyMode, WeightBrushMode } from "@/core/weights";
 import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
 import { StudioViewport } from "./StudioViewport";
@@ -20,6 +26,15 @@ type ExportBundlePreview = {
   zipBase64: string;
 };
 
+const BEZIER_PRESETS: { id: string; label: string; curve: CurveType; svgPath: string }[] = [
+  { id: "sine", label: "Smooth Sine", curve: EASE_SINE_IN_OUT, svgPath: "M 4 28 C 18 28, 26 4, 40 4" },
+  { id: "easeInOut", label: "Power Ease", curve: EASE_POWER2_IN_OUT, svgPath: "M 4 28 C 22 28, 22 4, 40 4" },
+  { id: "backOut", label: "Overshoot", curve: EASE_BACK_OUT, svgPath: "M 4 28 C 12 2, 26 0, 40 6" },
+  { id: "powerIn", label: "Slam In", curve: EASE_POWER2_IN, svgPath: "M 4 28 C 26 28, 34 18, 40 4" },
+  { id: "linear", label: "Linear", curve: "linear", svgPath: "M 4 28 L 40 4" },
+  { id: "stepped", label: "Stepped", curve: "stepped", svgPath: "M 4 28 L 24 28 L 24 4 L 40 4" },
+];
+
 export function StudioApp() {
   const {
     project,
@@ -27,33 +42,50 @@ export function StudioApp() {
     selectedBone,
     selectedPart,
     activeClip,
+    activeSkinName,
     currentTime,
     isPlaying,
     playbackSpeed,
     showBones,
     showMeshWireframe,
-    showCapsules,
     showHeatmap,
+    showOnionSkin,
+    showMotionArcs,
+    showSlashTrail,
+    enable3DRelight,
+    lightAngleDeg,
+    lightIntensity,
     isolatePart,
     brushMode,
+    liquifyMode,
     brushRadius,
     brushStrength,
     heatmapSingleBone,
     lockedBones,
     hiddenParts,
+    history,
+    historyIndex,
     loadPreset,
     setMode,
     selectBone,
     selectPart,
     setActiveClip,
+    setActiveSkin,
     setCurrentTime,
     setIsPlaying,
     setPlaybackSpeed,
+    setLightParams,
+    undo,
+    redo,
+    jumpToHistory,
+    runOneClickAutoRig,
     updateBone,
     addBone,
     updateIkMix,
     regeneratePartMesh,
+    resetPartLiquifyDeform,
     setBrushMode,
+    setLiquifyMode,
     setBrushRadius,
     setBrushStrength,
     toggleOverlay,
@@ -61,15 +93,20 @@ export function StudioApp() {
     togglePartVisibility,
     movePartLayerOrder,
     setBoneKeyframeAtCurrentTime,
+    setBoneCurveAtCurrentTime,
     deleteBoneKeyframe,
+    addAnimationEventAtCurrentTime,
+    deleteAnimationEvent,
     regenerateAllProceduralClips,
     bakeCurrentClipSprings,
   } = useStudioStore();
 
-  // Photoshop-style right dock tab: Layers (front-to-back stack) vs Bones (skeleton tree)
-  const [layersTab, setLayersTab] = useState<"layers" | "bones">("layers");
+  // Photoshop-style right dock tab: Layers | Bones | History
+  const [layersTab, setLayersTab] = useState<"layers" | "bones" | "history">("layers");
   const [showAiCopilot, setShowAiCopilot] = useState(true);
   const [dopeSheetExpanded, setDopeSheetExpanded] = useState(false);
+  const [activeCurveId, setActiveCurveId] = useState("sine");
+  const [eventType, setEventType] = useState("OnHit");
 
   const [newBoneName, setNewBoneName] = useState("");
   const [weightAlgo, setWeightAlgo] = useState<AutoWeightMode>("hybrid");
@@ -79,6 +116,14 @@ export function StudioApp() {
   const [showPartCutterModal, setShowPartCutterModal] = useState(false);
   const [cutterStatus, setCutterStatus] = useState<string>("");
   const [saveBadge, setSaveBadge] = useState<string>("Saved");
+
+  const currentBoneObj = project.bones.find((b) => b.name === selectedBone) ?? project.bones[0]!;
+  const currentPartObj = project.parts.find((p) => p.name === selectedPart) ?? project.parts[0]!;
+  const currentClipObj = project.animations[activeClip];
+  const currentBonePoseAtTime = sampleTransformTrack(
+    currentClipObj?.boneTracks[currentBoneObj?.name ?? "root"],
+    currentTime,
+  );
 
   const handleSaveProject = async () => {
     setSaveBadge("Saving...");
@@ -99,20 +144,18 @@ export function StudioApp() {
     }
   };
 
-  const currentBoneObj = project.bones.find((b) => b.name === selectedBone) ?? project.bones[0]!;
-  const currentPartObj = project.parts.find((p) => p.name === selectedPart) ?? project.parts[0]!;
-  const currentClipObj = project.animations[activeClip];
-  const currentBonePoseAtTime = sampleTransformTrack(
-    currentClipObj?.boneTracks[currentBoneObj?.name ?? "root"],
-    currentTime,
-  );
-
-  // Photoshop single-key hotkeys: V (Move/Pose), P (Bone Pin), M (Puppet Mesh), B (Weight Brush), [ / ] (Brush Size), Cmd+S (Save)
+  // Photoshop single-key hotkeys: V (Pose), P (Rig Pin), M (Mesh), B (Weight Brush), W (Liquify FFD), Cmd+Z / Shift+Cmd+Z (Undo/Redo), Cmd+S (Save)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         void handleSaveProject();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
         return;
       }
       const tag = (e.target as HTMLElement | null)?.tagName;
@@ -122,6 +165,7 @@ export function StudioApp() {
       else if (key === "p") setMode("rig");
       else if (key === "m") setMode("mesh");
       else if (key === "b") setMode("weights");
+      else if (key === "w") setMode("liquify");
       else if (e.key === "[") setBrushRadius(Math.max(15, brushRadius - 10));
       else if (e.key === "]") setBrushRadius(Math.min(180, brushRadius + 10));
       else if (e.key === " ") {
@@ -132,7 +176,7 @@ export function StudioApp() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brushRadius, isPlaying, project, setBrushRadius, setIsPlaying, setMode]);
+  }, [brushRadius, isPlaying, project, redo, setBrushRadius, setIsPlaying, setMode, undo]);
 
   const handleRunExport = async () => {
     setIsExporting(true);
@@ -193,8 +237,8 @@ export function StudioApp() {
     }
   };
 
-  // Photoshop Layers are displayed front-to-back (top of list = frontmost part)
   const reversedLayers = [...project.parts].reverse();
+  const activeBezierPreset = BEZIER_PRESETS.find((b) => b.id === activeCurveId) ?? BEZIER_PRESETS[0]!;
 
   return (
     <div className="relative h-screen w-screen overflow-hidden select-none">
@@ -204,9 +248,9 @@ export function StudioApp() {
       {/* 2. Photoshop-Adaptable Spatial Flex Workspace + Extreme-Right AI Agent Copilot */}
       <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-3.5 gap-3">
         {/* TOP BAR: Photoshop Menu + Contextual Tool Options Bar + Right Actions */}
-        <header className="pointer-events-auto flex items-center justify-between gap-3 px-4 py-2 rounded-full liquid-glass-pill shrink-0">
-          {/* Left: Brand + File/PSD Menu + Active Preset */}
-          <div className="flex items-center gap-2.5 shrink-0">
+        <header className="pointer-events-auto flex items-center justify-between gap-2.5 px-4 py-2 rounded-full liquid-glass-pill shrink-0">
+          {/* Left: Brand + Document + 1-Click Auto-Rig + Multi-Skin Wardrobe */}
+          <div className="flex items-center gap-2 shrink-0">
             <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-tr from-cyan-400 to-sky-200 shadow-[0_0_12px_#38bdf8] shrink-0" />
             <span className="font-bold tracking-tight text-sm text-white whitespace-nowrap">Kinetic Pro</span>
 
@@ -217,22 +261,79 @@ export function StudioApp() {
             >
               {Object.keys(BUILTIN_PRESETS).map((id) => (
                 <option key={id} value={id} className="bg-slate-950 text-white">
-                  {id === "astral-forge" ? "Document: Astral Forge.psd" : "Document: Sands of Solara.psd"}
+                  {id === "astral-forge" ? "Astral Forge.psd" : "Sands of Solara.psd"}
                 </option>
               ))}
             </select>
 
+            {/* Multi-Skin / Tier Wardrobe Selector */}
+            {project.skins && project.skins.length > 0 && (
+              <select
+                value={activeSkinName}
+                onChange={(e) => setActiveSkin(e.target.value)}
+                title="Switch Character Skin / Evolving Symbol Tier"
+                className="liquid-glass-well rounded-full px-2.5 py-1 text-[11px] font-semibold text-amber-200 focus:outline-none cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {project.skins.map((s) => (
+                  <option key={s.name} value={s.name} className="bg-slate-950 text-white">
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <button
+              onClick={runOneClickAutoRig}
+              title="1-Click AI Auto-Rigger: Place anatomical bones, solve Delaunay meshes & weights, and generate 6 clips"
+              className="liquid-glass-button whitespace-nowrap shrink-0 px-3 py-1 rounded-full text-[11px] font-bold text-cyan-200 border-cyan-400/35"
+            >
+              1-Click Auto-Rig
+            </button>
+
             <button
               onClick={() => setShowPartCutterModal(true)}
-              className="liquid-glass-button whitespace-nowrap shrink-0 px-3 py-1 rounded-full text-[11px] font-medium text-slate-100"
+              className="liquid-glass-button whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium text-slate-200"
             >
-              File → Import PSD / Cut PNG
+              Import PSD
             </button>
           </div>
 
-          {/* Center: Photoshop Contextual Tool Options Bar (Adapts to active tool V / P / M / B) */}
-          <div className="flex items-center gap-2.5 px-3.5 py-1 rounded-full liquid-glass-well text-xs overflow-x-auto">
-            {mode === "weights" ? (
+          {/* Center: Photoshop Contextual Tool Options Bar (Adapts to active tool V / P / M / B / W) */}
+          <div className="flex items-center gap-2 px-3.5 py-1 rounded-full liquid-glass-well text-xs overflow-x-auto">
+            {mode === "liquify" ? (
+              <>
+                <span className="text-[11px] font-bold text-purple-300 whitespace-nowrap">
+                  Liquify FFD (W):
+                </span>
+                {(["push", "inflate", "pinch", "restore"] as FfdLiquifyMode[]).map((lm) => (
+                  <button
+                    key={lm}
+                    onClick={() => setLiquifyMode(lm)}
+                    className={`whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize transition ${
+                      liquifyMode === lm ? "liquid-glass-active" : "text-slate-300 hover:text-white"
+                    }`}
+                  >
+                    {lm}
+                  </button>
+                ))}
+                <div className="h-3.5 w-px bg-white/15 mx-1" />
+                <span className="text-[11px] text-slate-300 whitespace-nowrap">Size: {brushRadius}px</span>
+                <input
+                  type="range"
+                  min="15"
+                  max="180"
+                  value={brushRadius}
+                  onChange={(e) => setBrushRadius(parseFloat(e.target.value))}
+                  className="w-20 accent-purple-400"
+                />
+                <button
+                  onClick={() => resetPartLiquifyDeform(currentPartObj.name)}
+                  className="whitespace-nowrap px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-200 text-[10px] font-semibold"
+                >
+                  Reset FFD
+                </button>
+              </>
+            ) : mode === "weights" ? (
               <>
                 <span className="text-[11px] font-bold text-emerald-300 whitespace-nowrap">
                   Weight Brush (B):
@@ -249,14 +350,14 @@ export function StudioApp() {
                   </button>
                 ))}
                 <div className="h-3.5 w-px bg-white/15 mx-1" />
-                <span className="text-[11px] text-slate-300 whitespace-nowrap">Size ([/]): {brushRadius}px</span>
+                <span className="text-[11px] text-slate-300 whitespace-nowrap">Size: {brushRadius}px</span>
                 <input
                   type="range"
                   min="15"
                   max="180"
                   value={brushRadius}
                   onChange={(e) => setBrushRadius(parseFloat(e.target.value))}
-                  className="w-20 accent-emerald-400"
+                  className="w-18 accent-emerald-400"
                 />
                 <span className="text-[11px] text-slate-300 whitespace-nowrap">
                   Flow: {Math.round(brushStrength * 100)}%
@@ -268,15 +369,14 @@ export function StudioApp() {
                   step="0.05"
                   value={brushStrength}
                   onChange={(e) => setBrushStrength(parseFloat(e.target.value))}
-                  className="w-20 accent-emerald-400"
+                  className="w-16 accent-emerald-400"
                 />
               </>
             ) : mode === "mesh" ? (
               <>
                 <span className="text-[11px] font-bold text-sky-300 whitespace-nowrap">
-                  Puppet Warp Mesh (M):
+                  Puppet Mesh (M):
                 </span>
-                <span className="text-[11px] text-slate-300 whitespace-nowrap">Density:</span>
                 {(["low", "medium", "high"] as const).map((d) => (
                   <button
                     key={d}
@@ -308,16 +408,16 @@ export function StudioApp() {
             ) : (
               <>
                 <span className="text-[11px] font-bold text-sky-300 whitespace-nowrap">
-                  {mode === "rig" ? "Bone Pin Tool (P):" : "Free Transform / Pose (V):"}
+                  {mode === "rig" ? "Bone Pin (P):" : "Transform Pose (V):"}
                 </span>
                 <span className="text-[11px] font-mono text-slate-200 whitespace-nowrap">
-                  Bone: {currentBoneObj.name} ({currentBoneObj.x}, {currentBoneObj.y})
+                  {currentBoneObj.name} ({currentBoneObj.x}, {currentBoneObj.y})
                 </span>
                 {project.ikConstraints[0] && (
                   <>
                     <div className="h-3.5 w-px bg-white/15 mx-1" />
                     <span className="text-[11px] text-slate-300 whitespace-nowrap">
-                      IK Pin Mix: {Math.round(project.ikConstraints[0].mix * 100)}%
+                      IK Mix: {Math.round(project.ikConstraints[0].mix * 100)}%
                     </span>
                     <input
                       type="range"
@@ -326,37 +426,38 @@ export function StudioApp() {
                       step="0.05"
                       value={project.ikConstraints[0].mix}
                       onChange={(e) => updateIkMix(project.ikConstraints[0]!.name, parseFloat(e.target.value))}
-                      className="w-20 accent-sky-400"
+                      className="w-18 accent-sky-400"
                     />
                   </>
                 )}
-                <div className="h-3.5 w-px bg-white/15 mx-1" />
-                <button
-                  onClick={() =>
-                    setBoneKeyframeAtCurrentTime(currentBoneObj.name, {
-                      r: currentBonePoseAtTime.r,
-                      x: currentBonePoseAtTime.x,
-                      y: currentBonePoseAtTime.y,
-                      sx: currentBonePoseAtTime.sx,
-                      sy: currentBonePoseAtTime.sy,
-                    })
-                  }
-                  className="whitespace-nowrap px-2.5 py-0.5 rounded-full bg-purple-500/25 border border-purple-400/40 text-purple-200 text-[11px] font-semibold"
-                >
-                  + Keyframe ({currentTime.toFixed(2)}s)
-                </button>
               </>
             )}
           </div>
 
-          {/* Right: Save (⌘S) + Export Unity + AI Copilot Toggle */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Right: Undo/Redo + Save (⌘S) + Export Unity + AI Copilot Toggle */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={undo}
+              disabled={historyIndex <= 0}
+              title="Undo (⌘Z)"
+              className="px-2.5 py-1.5 rounded-full liquid-glass-button text-xs font-bold text-slate-200 disabled:opacity-35"
+            >
+              ↶
+            </button>
+            <button
+              onClick={redo}
+              disabled={historyIndex >= history.length - 1}
+              title="Redo (⇧⌘Z)"
+              className="px-2.5 py-1.5 rounded-full liquid-glass-button text-xs font-bold text-slate-200 disabled:opacity-35"
+            >
+              ↷
+            </button>
             <button
               onClick={() => void handleSaveProject()}
               title="Save Project to Disk & LocalStorage (⌘S)"
               className="whitespace-nowrap shrink-0 px-3 py-1.5 rounded-full liquid-glass-button text-xs font-semibold text-sky-200 hover:text-white"
             >
-              Save (⌘S) · {saveBadge}
+              {saveBadge}
             </button>
             <button
               onClick={handleRunExport}
@@ -379,20 +480,20 @@ export function StudioApp() {
         {/* MIDDLE WORKSPACE ROW:
             [1. Left Photoshop Vertical Tool Rail]
             [2. Unobstructed Center Canvas]
-            [3. Right-Center Photoshop Properties + Layers Stack]
-            [4. Extreme-Right AI Agent Copilot Dock (ChatGPT / Cursor / Claude / Grok)] */}
+            [3. Right-Center Photoshop Properties + Layers/Bones/History Stack]
+            [4. Extreme-Right AI Agent Copilot Dock] */}
         <div className="flex-1 min-h-0 flex items-stretch justify-between gap-3">
           {/* 1. Far-Left Single-Column Photoshop Vertical Tool Rail */}
-          <aside className="pointer-events-auto w-14 rounded-[26px] liquid-glass py-3 px-1.5 flex flex-col items-center justify-between shrink-0">
-            {/* Primary Photoshop Tools (V, P, M, B, K) */}
-            <div className="space-y-2 flex flex-col items-center w-full">
+          <aside className="pointer-events-auto w-14 rounded-[26px] liquid-glass py-2.5 px-1.5 flex flex-col items-center justify-between shrink-0">
+            <div className="space-y-1.5 flex flex-col items-center w-full">
               {(
                 [
-                  { id: "animate", key: "V", label: "Move / Free Transform Pose (V)" },
-                  { id: "rig", key: "P", label: "Bone & IK Pin Tool (P)" },
-                  { id: "mesh", key: "M", label: "Puppet Warp Delaunay Mesh (M)" },
-                  { id: "weights", key: "B", label: "Weight Paint Brush (B)" },
-                ] as { id: StudioMode; key: string; label: string }[]
+                  { id: "animate", key: "V", sub: "Pose", label: "Move / Free Transform Pose (V)" },
+                  { id: "rig", key: "P", sub: "Rig", label: "Bone & IK Pin Tool (P)" },
+                  { id: "mesh", key: "M", sub: "Mesh", label: "Puppet Warp Delaunay Mesh (M)" },
+                  { id: "weights", key: "B", sub: "Brush", label: "Weight Paint Brush (B)" },
+                  { id: "liquify", key: "W", sub: "Warp", label: "Liquify FFD Vertex Sculpt (W)" },
+                ] as { id: StudioMode; key: string; sub: string; label: string }[]
               ).map((tool) => {
                 const active = mode === tool.id;
                 return (
@@ -400,20 +501,12 @@ export function StudioApp() {
                     key={tool.id}
                     onClick={() => setMode(tool.id)}
                     title={tool.label}
-                    className={`w-10 h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center transition ${
+                    className={`w-10 h-9.5 rounded-2xl font-bold text-xs flex flex-col items-center justify-center transition ${
                       active ? "liquid-glass-active" : "liquid-glass-button text-slate-300 hover:text-white"
                     }`}
                   >
                     <span>{tool.key}</span>
-                    <span className="text-[8px] font-normal opacity-75">
-                      {tool.id === "animate"
-                        ? "Pose"
-                        : tool.id === "rig"
-                          ? "Rig"
-                          : tool.id === "mesh"
-                            ? "Mesh"
-                            : "Brush"}
-                    </span>
+                    <span className="text-[8px] font-normal opacity-75">{tool.sub}</span>
                   </button>
                 );
               })}
@@ -421,31 +514,34 @@ export function StudioApp() {
               <button
                 onClick={() => setShowPartCutterModal(true)}
                 title="PSD Layer Extractor & Part Slice Knife (K)"
-                className="w-10 h-10 rounded-2xl liquid-glass-button text-slate-300 hover:text-white font-bold text-xs flex flex-col items-center justify-center"
+                className="w-10 h-9.5 rounded-2xl liquid-glass-button text-slate-300 hover:text-white font-bold text-xs flex flex-col items-center justify-center"
               >
                 <span>K</span>
                 <span className="text-[8px] font-normal opacity-75">Slice</span>
               </button>
             </div>
 
-            <div className="w-7 h-px bg-white/15 my-1" />
+            <div className="w-7 h-px bg-white/15 my-0.5" />
 
-            {/* Viewport Overlay Eye Toggles (Photoshop Extras / Guides style) */}
-            <div className="space-y-1.5 flex flex-col items-center w-full">
+            {/* Viewport Overlay Toggles (Bones, Grid, Heat, Onion Skin, Motion Arcs, Slash Trail, 3D Light, Solo) */}
+            <div className="space-y-1 flex flex-col items-center w-full">
               {(
                 [
                   { key: "showBones", short: "Bones", active: showBones },
                   { key: "showMeshWireframe", short: "Grid", active: showMeshWireframe },
                   { key: "showHeatmap", short: "Heat", active: showHeatmap },
-                  { key: "showCapsules", short: "Env", active: showCapsules },
+                  { key: "showOnionSkin", short: "Onion", active: showOnionSkin },
+                  { key: "showMotionArcs", short: "Arcs", active: showMotionArcs },
+                  { key: "showSlashTrail", short: "Trail", active: showSlashTrail },
+                  { key: "enable3DRelight", short: "3D Lit", active: enable3DRelight },
                   { key: "isolatePart", short: "Solo", active: isolatePart },
                 ] as const
               ).map((ov) => (
                 <button
                   key={ov.key}
                   onClick={() => toggleOverlay(ov.key)}
-                  title={`Toggle ${ov.short} Overlay`}
-                  className={`w-10 py-1.5 rounded-xl text-[9px] font-semibold transition ${
+                  title={`Toggle ${ov.short}`}
+                  className={`w-10 py-1 rounded-xl text-[9px] font-semibold transition ${
                     ov.active
                       ? "bg-sky-400/25 text-sky-200 border border-sky-300/40"
                       : "text-slate-400 hover:text-slate-200"
@@ -460,26 +556,40 @@ export function StudioApp() {
           {/* Center Canvas Spacer */}
           <div className="flex-1 pointer-events-none" />
 
-          {/* Right Group: [Photoshop Properties + Layers Dock] + [Extreme-Right AI Copilot Window] */}
+          {/* Right Group: [Photoshop Properties + Layers/Bones/History Dock] + [Extreme-Right AI Copilot Window] */}
           <div className="flex items-stretch gap-3 shrink-0">
-            {/* 3. Right-Center Dock: Photoshop Properties (Top) + Layers/Bones Stack (Bottom) */}
-            <aside className="pointer-events-auto w-72 rounded-[26px] liquid-glass flex flex-col overflow-hidden shrink-0">
-              {/* Top Half: Photoshop Properties Panel */}
-              <div className="p-3.5 border-b border-white/12 space-y-3 overflow-y-auto max-h-[48%]">
+            {/* 3. Right-Center Dock: Photoshop Properties (Top) + Layers/Bones/History Stack (Bottom) */}
+            <aside className="pointer-events-auto w-76 rounded-[26px] liquid-glass flex flex-col overflow-hidden shrink-0">
+              {/* Top Half: Photoshop Properties + Bezier Graph + 3D Normal Relight */}
+              <div className="p-3.5 border-b border-white/12 space-y-2.5 overflow-y-auto max-h-[52%]">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-sky-300">
-                    Properties — {mode === "mesh" || mode === "weights" ? currentPartObj.name : currentBoneObj.name}
+                    Properties — {mode === "mesh" || mode === "weights" || mode === "liquify" ? currentPartObj.name : currentBoneObj.name}
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
                     {project.width}×{project.height}
                   </span>
                 </div>
 
-                {/* Transform / Pose Coordinates (Like Photoshop Transform Panel) */}
+                {/* Transform / Pose Coordinates */}
                 <div className="p-2.5 rounded-2xl liquid-glass-well space-y-2 text-xs">
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-300 font-semibold">Transform ({currentBoneObj.name})</span>
-                    <span className="font-mono text-purple-300">{currentTime.toFixed(2)}s</span>
+                    <button
+                      onClick={() =>
+                        setBoneKeyframeAtCurrentTime(currentBoneObj.name, {
+                          r: currentBonePoseAtTime.r,
+                          x: currentBonePoseAtTime.x,
+                          y: currentBonePoseAtTime.y,
+                          sx: currentBonePoseAtTime.sx,
+                          sy: currentBonePoseAtTime.sy,
+                          curve: activeBezierPreset.curve,
+                        })
+                      }
+                      className="px-2 py-0.5 rounded-full bg-purple-500/25 border border-purple-400/40 text-purple-200 text-[10px] font-semibold"
+                    >
+                      + Key ({currentTime.toFixed(2)}s)
+                    </button>
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
                     <label className="space-y-0.5">
@@ -530,49 +640,75 @@ export function StudioApp() {
                   </div>
                 </div>
 
-                {/* Spring & IK Pin Quick Controls */}
+                {/* Visual Cubic Bezier Curve Graph Editor */}
                 <div className="p-2.5 rounded-2xl liquid-glass-well space-y-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-amber-200">Secondary Physics & IK</span>
-                    <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(currentBoneObj.spring)}
-                        onChange={(e) =>
-                          updateBone(currentBoneObj.name, {
-                            spring: e.target.checked
-                              ? { stiffness: 60, damping: 7, gain: [7, 3], wind: 1.4 }
-                              : undefined,
-                          })
-                        }
-                        className="accent-amber-400"
+                    <span className="text-[11px] font-semibold text-cyan-200">Bezier Interpolation Graph</span>
+                    <svg width="44" height="32" viewBox="0 0 44 32" className="rounded bg-black/40 border border-white/10">
+                      <path
+                        d={activeBezierPreset.svgPath}
+                        fill="none"
+                        stroke="#38bdf8"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
                       />
-                      Spring Bone
-                    </label>
+                    </svg>
                   </div>
-                  {project.ikConstraints.map((ik) => (
-                    <div key={ik.name} className="space-y-1">
-                      <div className="flex justify-between text-[10px] text-slate-300">
-                        <span>{ik.name}</span>
-                        <span className="font-mono text-sky-300">{Math.round(ik.mix * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={ik.mix}
-                        onChange={(e) => updateIkMix(ik.name, parseFloat(e.target.value))}
-                        className="w-full accent-sky-400"
-                      />
-                    </div>
-                  ))}
+                  <div className="grid grid-cols-3 gap-1">
+                    {BEZIER_PRESETS.map((bp) => (
+                      <button
+                        key={bp.id}
+                        onClick={() => {
+                          setActiveCurveId(bp.id);
+                          setBoneCurveAtCurrentTime(currentBoneObj.name, bp.curve);
+                        }}
+                        className={`py-1 px-1.5 rounded-lg text-[10px] font-medium truncate transition ${
+                          activeCurveId === bp.id
+                            ? "bg-sky-400/25 text-sky-200 border border-sky-300/40"
+                            : "bg-white/5 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {bp.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Real-Time 3D Normal-Map Point Relighting */}
+                <div className="p-2.5 rounded-2xl liquid-glass-well space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-amber-200">3D Normal Relight</span>
+                    <span className="text-[10px] font-mono text-slate-300">
+                      {lightAngleDeg}° · {Math.round(lightIntensity * 100)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="-180"
+                      max="180"
+                      value={lightAngleDeg}
+                      onChange={(e) => setLightParams(parseFloat(e.target.value), lightIntensity)}
+                      title="Light Direction Angle"
+                      className="flex-1 accent-amber-400"
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={lightIntensity}
+                      onChange={(e) => setLightParams(lightAngleDeg, parseFloat(e.target.value))}
+                      title="Light Intensity"
+                      className="w-20 accent-amber-400"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Bottom Half: Photoshop Layers & Bones Panel */}
+              {/* Bottom Half: Photoshop Layers | Bones | History Stack */}
               <div className="flex-1 flex flex-col min-h-0 p-3">
-                <div className="grid grid-cols-2 p-0.5 rounded-full liquid-glass-well text-xs mb-2.5 shrink-0">
+                <div className="grid grid-cols-3 p-0.5 rounded-full liquid-glass-well text-[11px] mb-2.5 shrink-0">
                   <button
                     onClick={() => setLayersTab("layers")}
                     className={`whitespace-nowrap py-1 rounded-full font-semibold transition ${
@@ -588,6 +724,14 @@ export function StudioApp() {
                     }`}
                   >
                     Bones ({project.bones.length})
+                  </button>
+                  <button
+                    onClick={() => setLayersTab("history")}
+                    className={`whitespace-nowrap py-1 rounded-full font-semibold transition ${
+                      layersTab === "history" ? "bg-white/20 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    History ({history.length})
                   </button>
                 </div>
 
@@ -609,7 +753,6 @@ export function StudioApp() {
                           } ${isHidden ? "opacity-45" : ""}`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            {/* Photoshop Eye Visibility Button */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -631,7 +774,6 @@ export function StudioApp() {
                             </div>
                           </div>
 
-                          {/* Photoshop Layer Stack Order Up/Down Buttons */}
                           <div className="flex items-center gap-1 shrink-0">
                             <button
                               onClick={(e) => {
@@ -658,7 +800,7 @@ export function StudioApp() {
                       );
                     })}
                   </div>
-                ) : (
+                ) : layersTab === "bones" ? (
                   <div className="flex-1 flex flex-col min-h-0">
                     <div className="flex-1 overflow-y-auto space-y-1 pr-0.5">
                       {project.bones.map((bone, idx) => {
@@ -728,6 +870,32 @@ export function StudioApp() {
                       </button>
                     </div>
                   </div>
+                ) : (
+                  /* Photoshop History Stack Tab */
+                  <div className="flex-1 overflow-y-auto space-y-1 pr-0.5">
+                    {history.map((snap, idx) => {
+                      const isCurrent = idx === historyIndex;
+                      const isFuture = idx > historyIndex;
+                      return (
+                        <div
+                          key={snap.id}
+                          onClick={() => jumpToHistory(idx)}
+                          className={`flex items-center justify-between px-3 py-2 rounded-2xl text-xs cursor-pointer transition ${
+                            isCurrent
+                              ? "bg-sky-400/25 border border-sky-300/40 text-white font-semibold"
+                              : isFuture
+                                ? "opacity-40 hover:opacity-75 text-slate-400"
+                                : "bg-white/5 hover:bg-white/10 text-slate-300"
+                          }`}
+                        >
+                          <span className="truncate">{snap.label}</span>
+                          <span className="text-[10px] font-mono text-slate-400 shrink-0 ml-2">
+                            {snap.timestamp}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </aside>
@@ -737,13 +905,13 @@ export function StudioApp() {
           </div>
         </div>
 
-        {/* BOTTOM ROW: Photoshop Video Timeline & Keyframe Dope Sheet Dock */}
+        {/* BOTTOM ROW: Photoshop Video Timeline, Unity AnimationEvents & Keyframe Dope Sheet Dock */}
         <footer
           className={`pointer-events-auto rounded-[28px] liquid-glass transition-all duration-300 flex flex-col overflow-hidden shrink-0 ${
-            dopeSheetExpanded ? "h-52" : "h-14"
+            dopeSheetExpanded ? "h-56" : "h-14"
           }`}
         >
-          <div className="px-5 h-14 flex items-center gap-3.5 text-xs shrink-0">
+          <div className="px-5 h-14 flex items-center gap-3 text-xs shrink-0">
             <button
               onClick={() => setIsPlaying(!isPlaying)}
               className={`whitespace-nowrap shrink-0 px-4 py-1.5 rounded-full font-bold transition ${
@@ -752,7 +920,7 @@ export function StudioApp() {
                   : "liquid-glass-active"
               }`}
             >
-              {isPlaying ? "Pause (Space)" : "Play (Space)"}
+              {isPlaying ? "Pause" : "Play"}
             </button>
 
             <div className="flex items-center gap-1 p-1 rounded-full liquid-glass-well shrink-0">
@@ -771,29 +939,75 @@ export function StudioApp() {
               ))}
             </div>
 
+            {/* Scrubber + Unity Event Markers Overlay */}
             <div className="flex-1 flex items-center gap-3 min-w-[140px]">
-              <input
-                type="range"
-                min={0}
-                max={currentClipObj?.duration ?? 2.4}
-                step={0.01}
-                value={currentTime}
-                onChange={(e) => {
-                  setIsPlaying(false);
-                  setCurrentTime(parseFloat(e.target.value));
-                }}
-                className="flex-1 accent-sky-300 cursor-pointer"
-              />
+              <div className="relative flex-1 flex items-center">
+                <input
+                  type="range"
+                  min={0}
+                  max={currentClipObj?.duration ?? 2.4}
+                  step={0.01}
+                  value={currentTime}
+                  onChange={(e) => {
+                    setIsPlaying(false);
+                    setCurrentTime(parseFloat(e.target.value));
+                  }}
+                  className="w-full accent-sky-300 cursor-pointer"
+                />
+                {/* Render Unity AnimationEvent flags along the scrubber */}
+                {(currentClipObj?.events ?? []).map((ev, idx) => {
+                  const pct = Math.max(0, Math.min(100, (ev.time / (currentClipObj?.duration ?? 2.4)) * 100));
+                  return (
+                    <button
+                      key={`${ev.name}-${idx}`}
+                      onClick={() => {
+                        setIsPlaying(false);
+                        setCurrentTime(ev.time);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        deleteAnimationEvent(ev.time, ev.name);
+                      }}
+                      title={`Unity AnimationEvent: ${ev.name} (${ev.stringParam ?? ""}) @ ${ev.time}s — Right-click to remove`}
+                      style={{ left: `${pct}%` }}
+                      className="absolute -top-2.5 -translate-x-1/2 px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[8px] font-extrabold shadow"
+                    >
+                      ⚡{ev.name}
+                    </button>
+                  );
+                })}
+              </div>
               <span className="font-mono text-xs text-slate-300 whitespace-nowrap shrink-0">
                 <strong className="text-white">{currentTime.toFixed(2)}s</strong> /{" "}
                 {(currentClipObj?.duration ?? 2.4).toFixed(1)}s
               </span>
             </div>
 
+            {/* Add Unity AnimationEvent Trigger Control */}
+            <div className="flex items-center gap-1 liquid-glass-well rounded-full px-2 py-0.5 shrink-0">
+              <select
+                value={eventType}
+                onChange={(e) => setEventType(e.target.value)}
+                className="bg-transparent text-[11px] text-amber-200 font-semibold focus:outline-none"
+              >
+                <option value="OnHit" className="bg-slate-950">⚡ OnHit</option>
+                <option value="SpawnVFX" className="bg-slate-950">✨ SpawnVFX</option>
+                <option value="PlaySFX" className="bg-slate-950">🔊 PlaySFX</option>
+                <option value="CameraShake" className="bg-slate-950">💥 CameraShake</option>
+              </select>
+              <button
+                onClick={() => addAnimationEventAtCurrentTime(eventType, `fx_${activeClip}_${eventType.toLowerCase()}`, 1.0)}
+                title="Add Unity AnimationEvent & Spine Event at Playhead"
+                className="px-2 py-0.5 rounded-full bg-amber-400/25 text-amber-200 text-[10px] font-bold hover:bg-amber-400/40"
+              >
+                + Event
+              </button>
+            </div>
+
             <select
               value={playbackSpeed}
               onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
-              className="liquid-glass-well rounded-full px-2.5 py-1 text-[11px] text-slate-200 shrink-0"
+              className="liquid-glass-well rounded-full px-2 py-1 text-[11px] text-slate-200 shrink-0"
             >
               <option value={0.25} className="bg-slate-950">0.25×</option>
               <option value={0.5} className="bg-slate-950">0.5×</option>
@@ -803,23 +1017,16 @@ export function StudioApp() {
 
             <button
               onClick={bakeCurrentClipSprings}
-              className="whitespace-nowrap shrink-0 px-3 py-1 rounded-full liquid-glass-button text-[11px] font-semibold text-amber-200"
+              className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[11px] font-semibold text-amber-200"
             >
               Bake Springs
-            </button>
-
-            <button
-              onClick={regenerateAllProceduralClips}
-              className="whitespace-nowrap shrink-0 px-3 py-1 rounded-full liquid-glass-button text-[11px] font-semibold text-purple-200"
-            >
-              Auto-Clips
             </button>
 
             <button
               onClick={() => setDopeSheetExpanded(!dopeSheetExpanded)}
               className="whitespace-nowrap shrink-0 px-3 py-1 rounded-full liquid-glass-button text-[11px] font-semibold text-sky-200"
             >
-              {dopeSheetExpanded ? "Hide Timeline" : "Timeline Tracks"}
+              {dopeSheetExpanded ? "Hide Dope Sheet" : "Dope Sheet"}
             </button>
           </div>
 
@@ -883,7 +1090,7 @@ export function StudioApp() {
             <div className="flex items-center justify-between border-b border-white/15 pb-4">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-300">
-                  Triple Unity + Spine 4.2 Bundle Ready
+                  Triple Unity + Spine 4.2 Bundle Ready (Includes Events, Multi-Skins & FFD)
                 </span>
                 <h2 className="text-xl font-bold text-white mt-0.5">{project.title}</h2>
               </div>

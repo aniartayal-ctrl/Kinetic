@@ -1,10 +1,12 @@
 "use client";
 
 import { create } from "zustand";
-import { bakeClipConstraintsToKeyframes, generateProceduralClips } from "@/core/animator";
+import { bakeClipConstraintsToKeyframes, generateProceduralClips, sampleDeformTrack } from "@/core/animator";
+import { autoRigProject } from "@/core/auto-rigger";
 import { BUILTIN_PRESETS } from "@/core/presets";
 import {
   RIG_BONE_PALETTE,
+  type CurveType,
   type RigBone,
   type RigPart,
   type SpineForgeProject,
@@ -12,12 +14,33 @@ import {
 } from "@/core/schema";
 import {
   buildPartMesh,
+  paintFfdLiquifyStroke,
   paintMeshWeights,
   type AutoWeightMode,
+  type FfdLiquifyMode,
   type WeightBrushMode,
 } from "@/core/weights";
 
-export type StudioMode = "rig" | "mesh" | "weights" | "animate" | "export";
+export type StudioMode = "rig" | "mesh" | "weights" | "liquify" | "animate" | "export";
+
+export type HistorySnapshot = {
+  id: string;
+  label: string;
+  timestamp: string;
+  projectJson: string;
+};
+
+type OverlayToggleKey =
+  | "showMeshWireframe"
+  | "showBones"
+  | "showCapsules"
+  | "showHeatmap"
+  | "heatmapSingleBone"
+  | "isolatePart"
+  | "showOnionSkin"
+  | "showMotionArcs"
+  | "showSlashTrail"
+  | "enable3DRelight";
 
 type StudioState = {
   project: SpineForgeProject;
@@ -25,68 +48,105 @@ type StudioState = {
   selectedBone: string | null;
   selectedPart: string | null;
   activeClip: string;
+  activeSkinName: string;
   currentTime: number;
   isPlaying: boolean;
   playbackSpeed: number;
 
-  // Viewport overlays
+  // Viewport overlays & 3D relighting
   showMeshWireframe: boolean;
   showBones: boolean;
   showCapsules: boolean;
   showHeatmap: boolean;
   heatmapSingleBone: boolean;
   isolatePart: boolean;
+  showOnionSkin: boolean;
+  showMotionArcs: boolean;
+  showSlashTrail: boolean;
+  enable3DRelight: boolean;
+  lightAngleDeg: number;
+  lightIntensity: number;
 
-  // Weight brush state
+  // Weight & Liquify brush state
   brushMode: WeightBrushMode;
+  liquifyMode: FfdLiquifyMode;
   brushRadius: number;
   brushStrength: number;
   lockedBones: string[];
   hiddenParts: string[];
 
-  // Actions
+  // Photoshop History Stack (Undo / Redo)
+  history: HistorySnapshot[];
+  historyIndex: number;
+
+  // Core Actions
   loadPreset: (id: string) => void;
-  setProject: (project: SpineForgeProject) => void;
+  setProject: (project: SpineForgeProject, historyLabel?: string) => void;
   setMode: (mode: StudioMode) => void;
   selectBone: (name: string | null) => void;
   selectPart: (name: string | null) => void;
   setActiveClip: (clipName: string) => void;
+  setActiveSkin: (skinName: string) => void;
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
   setPlaybackSpeed: (speed: number) => void;
-  toggleOverlay: (
-    key: "showMeshWireframe" | "showBones" | "showCapsules" | "showHeatmap" | "heatmapSingleBone" | "isolatePart",
-  ) => void;
+  toggleOverlay: (key: OverlayToggleKey) => void;
+  setLightParams: (angleDeg: number, intensity: number) => void;
   togglePartVisibility: (partName: string) => void;
   movePartLayerOrder: (partName: string, direction: "up" | "down") => void;
 
-  // Rigging mutations
+  // History Actions
+  pushHistory: (label: string, nextProject: SpineForgeProject) => void;
+  undo: () => void;
+  redo: () => void;
+  jumpToHistory: (index: number) => void;
+
+  // AI Auto-Rig & Rigging Mutations
+  runOneClickAutoRig: () => void;
   updateBone: (boneName: string, patch: Partial<RigBone>) => void;
   addBone: (parentBoneName: string, name: string, x: number, y: number) => void;
   updatePart: (partName: string, patch: Partial<RigPart>) => void;
   updateIkMix: (ikName: string, mix: number, bendPositive?: boolean) => void;
 
-  // Mesh & Weight mutations
+  // Mesh, Weight & Liquify FFD Mutations
   regeneratePartMesh: (partName: string, density: "low" | "medium" | "high", weightMode: AutoWeightMode) => void;
   applyWeightBrush: (partName: string, rigX: number, rigY: number) => void;
+  applyLiquifyBrush: (partName: string, rigX: number, rigY: number, dx: number, dy: number) => void;
+  resetPartLiquifyDeform: (partName: string) => void;
   setBrushMode: (mode: WeightBrushMode) => void;
+  setLiquifyMode: (mode: FfdLiquifyMode) => void;
   setBrushRadius: (radius: number) => void;
   setBrushStrength: (strength: number) => void;
   toggleBoneLock: (boneName: string) => void;
 
-  // Animation mutations
+  // Animation, Bezier Curves & Unity Event Mutations
   setBoneKeyframeAtCurrentTime: (boneName: string, patch: Partial<TransformKey>) => void;
+  setBoneCurveAtCurrentTime: (boneName: string, curve: CurveType) => void;
   deleteBoneKeyframe: (boneName: string, time: number) => void;
+  addAnimationEventAtCurrentTime: (name: string, stringParam?: string, floatParam?: number) => void;
+  deleteAnimationEvent: (time: number, name: string) => void;
   regenerateAllProceduralClips: () => void;
   bakeCurrentClipSprings: () => void;
 };
 
+function makeSnapshot(label: string, project: SpineForgeProject): HistorySnapshot {
+  return {
+    id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    label,
+    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+    projectJson: JSON.stringify(project),
+  };
+}
+
+const initialProject = BUILTIN_PRESETS["astral-forge"]!();
+
 export const useStudioStore = create<StudioState>((set, get) => ({
-  project: BUILTIN_PRESETS["astral-forge"]!(),
-  mode: "rig",
+  project: initialProject,
+  mode: "animate",
   selectedBone: "arm",
   selectedPart: "body",
   activeClip: "strike",
+  activeSkinName: "default",
   currentTime: 0,
   isPlaying: true,
   playbackSpeed: 1,
@@ -97,12 +157,67 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   showHeatmap: false,
   heatmapSingleBone: false,
   isolatePart: false,
+  showOnionSkin: false,
+  showMotionArcs: true,
+  showSlashTrail: true,
+  enable3DRelight: true,
+  lightAngleDeg: -38,
+  lightIntensity: 0.55,
 
   brushMode: "add",
+  liquifyMode: "push",
   brushRadius: 65,
   brushStrength: 0.45,
   lockedBones: [],
   hiddenParts: [],
+
+  history: [makeSnapshot("Opened Document", initialProject)],
+  historyIndex: 0,
+
+  pushHistory: (label, nextProject) => {
+    const { history, historyIndex } = get();
+    const sliced = history.slice(0, historyIndex + 1);
+    const nextHist = [...sliced.slice(-24), makeSnapshot(label, nextProject)];
+    set({
+      project: nextProject,
+      history: nextHist,
+      historyIndex: nextHist.length - 1,
+    });
+  },
+
+  undo: () => {
+    const { history, historyIndex } = get();
+    if (historyIndex <= 0) return;
+    const prevIdx = historyIndex - 1;
+    const snap = history[prevIdx];
+    if (!snap) return;
+    set({
+      project: JSON.parse(snap.projectJson) as SpineForgeProject,
+      historyIndex: prevIdx,
+    });
+  },
+
+  redo: () => {
+    const { history, historyIndex } = get();
+    if (historyIndex >= history.length - 1) return;
+    const nextIdx = historyIndex + 1;
+    const snap = history[nextIdx];
+    if (!snap) return;
+    set({
+      project: JSON.parse(snap.projectJson) as SpineForgeProject,
+      historyIndex: nextIdx,
+    });
+  },
+
+  jumpToHistory: (index) => {
+    const { history } = get();
+    const snap = history[index];
+    if (!snap) return;
+    set({
+      project: JSON.parse(snap.projectJson) as SpineForgeProject,
+      historyIndex: index,
+    });
+  },
 
   loadPreset: (id) => {
     const factory = BUILTIN_PRESETS[id];
@@ -113,37 +228,36 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       selectedBone: project.bones[1]?.name ?? "root",
       selectedPart: project.parts.find((p) => p.skin && p.skin.length > 1)?.name ?? project.parts[0]?.name ?? null,
       activeClip: "strike",
+      activeSkinName: "default",
       currentTime: 0,
       hiddenParts: [],
+      history: [makeSnapshot(`Loaded ${project.title}`, project)],
+      historyIndex: 0,
     });
   },
 
-  setProject: (project) => {
-    set({
-      project,
-      selectedBone: project.bones[0]?.name ?? null,
-      selectedPart: project.parts[0]?.name ?? null,
-      activeClip: Object.keys(project.animations)[0] ?? "idle",
-      currentTime: 0,
-    });
+  setProject: (project, historyLabel = "Updated Project") => {
+    get().pushHistory(historyLabel, project);
   },
 
   setMode: (mode) => {
     set({
       mode,
       showHeatmap: mode === "weights",
-      showMeshWireframe: mode === "mesh" || mode === "weights" || get().showMeshWireframe,
+      showMeshWireframe: mode === "mesh" || mode === "weights" || mode === "liquify" || get().showMeshWireframe,
     });
   },
 
   selectBone: (selectedBone) => set({ selectedBone }),
   selectPart: (selectedPart) => set({ selectedPart }),
   setActiveClip: (activeClip) => set({ activeClip, currentTime: 0 }),
+  setActiveSkin: (activeSkinName) => set({ activeSkinName }),
   setCurrentTime: (currentTime) => set({ currentTime }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
 
   toggleOverlay: (key) => set((state) => ({ [key]: !state[key] })),
+  setLightParams: (lightAngleDeg, lightIntensity) => set({ lightAngleDeg, lightIntensity }),
 
   togglePartVisibility: (partName) =>
     set((state) => ({
@@ -152,91 +266,95 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         : [...state.hiddenParts, partName],
     })),
 
-  movePartLayerOrder: (partName, direction) =>
-    set((state) => {
-      const parts = [...state.project.parts];
-      const idx = parts.findIndex((p) => p.name === partName);
-      if (idx < 0) return state;
-      // In back-to-front array, "up" in Photoshop Layers means towards front (higher index)
-      const targetIdx = direction === "up" ? idx + 1 : idx - 1;
-      if (targetIdx < 0 || targetIdx >= parts.length) return state;
-      const [item] = parts.splice(idx, 1);
-      parts.splice(targetIdx, 0, item!);
-      return { project: { ...state.project, parts } };
-    }),
+  movePartLayerOrder: (partName, direction) => {
+    const state = get();
+    const parts = [...state.project.parts];
+    const idx = parts.findIndex((p) => p.name === partName);
+    if (idx < 0) return;
+    const targetIdx = direction === "up" ? idx + 1 : idx - 1;
+    if (targetIdx < 0 || targetIdx >= parts.length) return;
+    const [item] = parts.splice(idx, 1);
+    parts.splice(targetIdx, 0, item!);
+    state.pushHistory(`Reordered Layer ${partName}`, { ...state.project, parts });
+  },
 
-  updateBone: (boneName, patch) =>
-    set((state) => {
-      const bones = state.project.bones.map((b) => (b.name === boneName ? { ...b, ...patch } : b));
-      const nextProject: SpineForgeProject = { ...state.project, bones };
-      // Recompute auto-weights for skinned parts if bone position/regions/feather changed
-      if (patch.x !== undefined || patch.y !== undefined || patch.regions !== undefined || patch.feather !== undefined) {
-        nextProject.parts = nextProject.parts.map((part) => {
-          if (part.skin?.includes(boneName)) {
-            return { ...part, mesh: buildPartMesh(nextProject, { ...part, mesh: undefined }) };
-          }
-          return part;
-        });
-      }
-      return { project: nextProject };
-    }),
+  runOneClickAutoRig: () => {
+    const state = get();
+    const rigged = autoRigProject(state.project, undefined, { meshDensity: "high", weightMode: "hybrid" });
+    state.pushHistory("1-Click AI Auto-Rig", rigged);
+  },
 
-  addBone: (parentBoneName, name, x, y) =>
-    set((state) => {
-      const clean = name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
-      if (!clean || state.project.bones.some((b) => b.name === clean)) return state;
-      const newBone: RigBone = {
-        name: clean,
-        parent: parentBoneName,
-        x: Math.max(0, Math.min(1, x)),
-        y: Math.max(0, Math.min(1, y)),
-        length: 0.08,
-        color: RIG_BONE_PALETTE[state.project.bones.length % RIG_BONE_PALETTE.length],
-      };
-      return {
-        project: {
-          ...state.project,
-          bones: [...state.project.bones, newBone],
-        },
-        selectedBone: clean,
-      };
-    }),
-
-  updatePart: (partName, patch) =>
-    set((state) => {
-      const parts = state.project.parts.map((p) => {
-        if (p.name !== partName) return p;
-        const updated = { ...p, ...patch };
-        if (patch.bone !== undefined || patch.skin !== undefined || patch.meshDensity !== undefined) {
-          updated.mesh = buildPartMesh(state.project, { ...updated, mesh: undefined });
+  updateBone: (boneName, patch) => {
+    const state = get();
+    const bones = state.project.bones.map((b) => (b.name === boneName ? { ...b, ...patch } : b));
+    const nextProject: SpineForgeProject = { ...state.project, bones };
+    if (patch.x !== undefined || patch.y !== undefined || patch.regions !== undefined || patch.feather !== undefined) {
+      nextProject.parts = nextProject.parts.map((part) => {
+        if (part.skin?.includes(boneName)) {
+          return { ...part, mesh: buildPartMesh(nextProject, { ...part, mesh: undefined }) };
         }
-        return updated;
+        return part;
       });
-      return { project: { ...state.project, parts } };
-    }),
+    }
+    state.pushHistory(`Adjusted Bone ${boneName}`, nextProject);
+  },
 
-  updateIkMix: (ikName, mix, bendPositive) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        ikConstraints: state.project.ikConstraints.map((ik) =>
-          ik.name === ikName
-            ? { ...ik, mix: Math.max(0, Math.min(1, mix)), bendPositive: bendPositive ?? ik.bendPositive }
-            : ik,
-        ),
-      },
-    })),
+  addBone: (parentBoneName, name, x, y) => {
+    const state = get();
+    const clean = name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
+    if (!clean || state.project.bones.some((b) => b.name === clean)) return;
+    const newBone: RigBone = {
+      name: clean,
+      parent: parentBoneName,
+      x: Math.max(0, Math.min(1, x)),
+      y: Math.max(0, Math.min(1, y)),
+      length: 0.08,
+      color: RIG_BONE_PALETTE[state.project.bones.length % RIG_BONE_PALETTE.length],
+    };
+    const nextProject = {
+      ...state.project,
+      bones: [...state.project.bones, newBone],
+    };
+    state.pushHistory(`Added Bone ${clean}`, nextProject);
+    set({ selectedBone: clean });
+  },
 
-  regeneratePartMesh: (partName, density, weightMode) =>
-    set((state) => {
-      const parts = state.project.parts.map((p) => {
-        if (p.name !== partName) return p;
-        const nextPart: RigPart = { ...p, meshDensity: density, mesh: undefined };
-        nextPart.mesh = buildPartMesh(state.project, nextPart, { weightMode });
-        return nextPart;
-      });
-      return { project: { ...state.project, parts } };
-    }),
+  updatePart: (partName, patch) => {
+    const state = get();
+    const parts = state.project.parts.map((p) => {
+      if (p.name !== partName) return p;
+      const updated = { ...p, ...patch };
+      if (patch.bone !== undefined || patch.skin !== undefined || patch.meshDensity !== undefined) {
+        updated.mesh = buildPartMesh(state.project, { ...updated, mesh: undefined });
+      }
+      return updated;
+    });
+    state.pushHistory(`Updated Layer ${partName}`, { ...state.project, parts });
+  },
+
+  updateIkMix: (ikName, mix, bendPositive) => {
+    const state = get();
+    const nextProject = {
+      ...state.project,
+      ikConstraints: state.project.ikConstraints.map((ik) =>
+        ik.name === ikName
+          ? { ...ik, mix: Math.max(0, Math.min(1, mix)), bendPositive: bendPositive ?? ik.bendPositive }
+          : ik,
+      ),
+    };
+    state.pushHistory(`IK Pin ${ikName} (${Math.round(mix * 100)}%)`, nextProject);
+  },
+
+  regeneratePartMesh: (partName, density, weightMode) => {
+    const state = get();
+    const parts = state.project.parts.map((p) => {
+      if (p.name !== partName) return p;
+      const nextPart: RigPart = { ...p, meshDensity: density, mesh: undefined };
+      nextPart.mesh = buildPartMesh(state.project, nextPart, { weightMode });
+      return nextPart;
+    });
+    state.pushHistory(`Meshed ${partName} (${density}/${weightMode})`, { ...state.project, parts });
+  },
 
   applyWeightBrush: (partName, rigX, rigY) =>
     set((state) => {
@@ -268,7 +386,73 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       return { project: { ...project, parts } };
     }),
 
+  applyLiquifyBrush: (partName, rigX, rigY, dx, dy) =>
+    set((state) => {
+      const { project, activeClip, currentTime, liquifyMode, brushRadius, brushStrength } = state;
+      const clip = project.animations[activeClip];
+      const part = project.parts.find((p) => p.name === partName);
+      if (!clip || !part) return state;
+      const mesh = part.mesh ?? buildPartMesh(project, part);
+      const vCount = mesh.positions.length / 2;
+
+      const t = Number(currentTime.toFixed(2));
+      const existingDeformTrack = [...(clip.deformTracks?.[partName] ?? [])];
+      const currentOffsets = sampleDeformTrack(existingDeformTrack, t, vCount);
+      const nextOffsets = paintFfdLiquifyStroke(mesh, currentOffsets, {
+        x: rigX,
+        y: rigY,
+        dx,
+        dy,
+        radius: brushRadius,
+        strength: brushStrength,
+        mode: liquifyMode,
+      });
+
+      const keyIdx = existingDeformTrack.findIndex((k) => Math.abs(k.time - t) < 0.03);
+      if (keyIdx >= 0) {
+        existingDeformTrack[keyIdx] = { ...existingDeformTrack[keyIdx]!, offsets: nextOffsets };
+      } else {
+        existingDeformTrack.push({ time: t, offsets: nextOffsets });
+        existingDeformTrack.sort((a, b) => a.time - b.time);
+      }
+
+      return {
+        project: {
+          ...project,
+          animations: {
+            ...project.animations,
+            [activeClip]: {
+              ...clip,
+              deformTracks: {
+                ...(clip.deformTracks ?? {}),
+                [partName]: existingDeformTrack,
+              },
+            },
+          },
+        },
+      };
+    }),
+
+  resetPartLiquifyDeform: (partName) => {
+    const state = get();
+    const clip = state.project.animations[state.activeClip];
+    if (!clip) return;
+    const nextDeform = { ...(clip.deformTracks ?? {}) };
+    delete nextDeform[partName];
+    state.pushHistory(`Reset Liquify FFD on ${partName}`, {
+      ...state.project,
+      animations: {
+        ...state.project.animations,
+        [state.activeClip]: {
+          ...clip,
+          deformTracks: nextDeform,
+        },
+      },
+    });
+  },
+
   setBrushMode: (brushMode) => set({ brushMode }),
+  setLiquifyMode: (liquifyMode) => set({ liquifyMode }),
   setBrushRadius: (brushRadius) => set({ brushRadius }),
   setBrushStrength: (brushStrength) => set({ brushStrength }),
 
@@ -279,91 +463,163 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         : [...state.lockedBones, boneName],
     })),
 
-  setBoneKeyframeAtCurrentTime: (boneName, patch) =>
-    set((state) => {
-      const { project, activeClip, currentTime } = state;
-      const clip = project.animations[activeClip];
-      if (!clip) return state;
+  setBoneKeyframeAtCurrentTime: (boneName, patch) => {
+    const state = get();
+    const { project, activeClip, currentTime } = state;
+    const clip = project.animations[activeClip];
+    if (!clip) return;
 
-      const t = Number(currentTime.toFixed(3));
-      const existingTrack = [...(clip.boneTracks[boneName] ?? [])];
-      const idx = existingTrack.findIndex((k) => Math.abs(k.time - t) < 0.02);
+    const t = Number(currentTime.toFixed(3));
+    const existingTrack = [...(clip.boneTracks[boneName] ?? [])];
+    const idx = existingTrack.findIndex((k) => Math.abs(k.time - t) < 0.02);
 
-      if (idx >= 0) {
-        existingTrack[idx] = { ...existingTrack[idx]!, ...patch, time: existingTrack[idx]!.time };
-      } else {
-        existingTrack.push({
-          time: t,
-          r: patch.r ?? 0,
-          x: patch.x ?? 0,
-          y: patch.y ?? 0,
-          sx: patch.sx ?? 1,
-          sy: patch.sy ?? 1,
-        });
-        existingTrack.sort((a, b) => a.time - b.time);
-      }
+    if (idx >= 0) {
+      existingTrack[idx] = { ...existingTrack[idx]!, ...patch, time: existingTrack[idx]!.time };
+    } else {
+      existingTrack.push({
+        time: t,
+        r: patch.r ?? 0,
+        x: patch.x ?? 0,
+        y: patch.y ?? 0,
+        sx: patch.sx ?? 1,
+        sy: patch.sy ?? 1,
+        curve: patch.curve,
+      });
+      existingTrack.sort((a, b) => a.time - b.time);
+    }
 
-      return {
-        project: {
-          ...project,
-          animations: {
-            ...project.animations,
-            [activeClip]: {
-              ...clip,
-              boneTracks: {
-                ...clip.boneTracks,
-                [boneName]: existingTrack,
-              },
-            },
+    const nextProject = {
+      ...project,
+      animations: {
+        ...project.animations,
+        [activeClip]: {
+          ...clip,
+          boneTracks: {
+            ...clip.boneTracks,
+            [boneName]: existingTrack,
           },
         },
-      };
-    }),
-
-  deleteBoneKeyframe: (boneName, time) =>
-    set((state) => {
-      const { project, activeClip } = state;
-      const clip = project.animations[activeClip];
-      if (!clip) return state;
-      const filtered = (clip.boneTracks[boneName] ?? []).filter((k) => Math.abs(k.time - time) > 0.015);
-      return {
-        project: {
-          ...project,
-          animations: {
-            ...project.animations,
-            [activeClip]: {
-              ...clip,
-              boneTracks: {
-                ...clip.boneTracks,
-                [boneName]: filtered,
-              },
-            },
-          },
-        },
-      };
-    }),
-
-  regenerateAllProceduralClips: () =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        animations: generateProceduralClips(state.project),
       },
-    })),
+    };
+    state.pushHistory(`Keyed ${boneName} @ ${t.toFixed(2)}s`, nextProject);
+  },
 
-  bakeCurrentClipSprings: () =>
-    set((state) => {
-      const clip = state.project.animations[state.activeClip];
-      if (!clip) return state;
-      const baked = bakeClipConstraintsToKeyframes(state.project, clip, 24);
-      return {
-        project: {
-          ...state.project,
-          animations: {
-            ...state.project.animations,
-            [state.activeClip]: baked,
+  setBoneCurveAtCurrentTime: (boneName, curve) => {
+    const state = get();
+    const { project, activeClip, currentTime } = state;
+    const clip = project.animations[activeClip];
+    if (!clip) return;
+    const track = [...(clip.boneTracks[boneName] ?? [])];
+    if (track.length === 0) return;
+
+    // Find active or nearest keyframe <= currentTime
+    let targetIdx = 0;
+    for (let i = 0; i < track.length; i++) {
+      if (track[i]!.time <= currentTime + 0.02) targetIdx = i;
+    }
+    track[targetIdx] = { ...track[targetIdx]!, curve };
+
+    const nextProject = {
+      ...project,
+      animations: {
+        ...project.animations,
+        [activeClip]: {
+          ...clip,
+          boneTracks: {
+            ...clip.boneTracks,
+            [boneName]: track,
           },
         },
-      };
-    }),
+      },
+    };
+    state.pushHistory(`Set Curve on ${boneName}`, nextProject);
+  },
+
+  deleteBoneKeyframe: (boneName, time) => {
+    const state = get();
+    const { project, activeClip } = state;
+    const clip = project.animations[activeClip];
+    if (!clip) return;
+    const filtered = (clip.boneTracks[boneName] ?? []).filter((k) => Math.abs(k.time - time) > 0.015);
+    const nextProject = {
+      ...project,
+      animations: {
+        ...project.animations,
+        [activeClip]: {
+          ...clip,
+          boneTracks: {
+            ...clip.boneTracks,
+            [boneName]: filtered,
+          },
+        },
+      },
+    };
+    state.pushHistory(`Deleted Key on ${boneName}`, nextProject);
+  },
+
+  addAnimationEventAtCurrentTime: (name, stringParam = "", floatParam = 1.0) => {
+    const state = get();
+    const { project, activeClip, currentTime } = state;
+    const clip = project.animations[activeClip];
+    if (!clip) return;
+    const t = Number(currentTime.toFixed(2));
+    const events = [...(clip.events ?? [])].filter((e) => !(Math.abs(e.time - t) < 0.02 && e.name === name));
+    events.push({ time: t, name, stringParam, floatParam });
+    events.sort((a, b) => a.time - b.time);
+
+    const nextProject = {
+      ...project,
+      animations: {
+        ...project.animations,
+        [activeClip]: {
+          ...clip,
+          events,
+        },
+      },
+    };
+    state.pushHistory(`Added Event ${name} @ ${t}s`, nextProject);
+  },
+
+  deleteAnimationEvent: (time, name) => {
+    const state = get();
+    const { project, activeClip } = state;
+    const clip = project.animations[activeClip];
+    if (!clip) return;
+    const events = (clip.events ?? []).filter((e) => !(Math.abs(e.time - time) < 0.02 && e.name === name));
+    const nextProject = {
+      ...project,
+      animations: {
+        ...project.animations,
+        [activeClip]: {
+          ...clip,
+          events,
+        },
+      },
+    };
+    state.pushHistory(`Removed Event ${name}`, nextProject);
+  },
+
+  regenerateAllProceduralClips: () => {
+    const state = get();
+    const nextProject = {
+      ...state.project,
+      animations: generateProceduralClips(state.project),
+    };
+    state.pushHistory("Synthesized 6 Procedural Clips", nextProject);
+  },
+
+  bakeCurrentClipSprings: () => {
+    const state = get();
+    const clip = state.project.animations[state.activeClip];
+    if (!clip) return;
+    const baked = bakeClipConstraintsToKeyframes(state.project, clip, 24);
+    const nextProject = {
+      ...state.project,
+      animations: {
+        ...state.project.animations,
+        [state.activeClip]: baked,
+      },
+    };
+    state.pushHistory(`Baked Springs (${state.activeClip})`, nextProject);
+  },
 }));

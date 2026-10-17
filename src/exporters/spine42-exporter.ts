@@ -68,6 +68,7 @@ export type Spine42Json = {
     name: string;
     attachments: Record<string, Record<string, Spine42MeshAttachmentJson>>;
   }[];
+  events?: Record<string, { int?: number; float?: number; string?: string }>;
   animations: Record<
     string,
     {
@@ -81,6 +82,7 @@ export type Spine42Json = {
       >;
       deform?: Record<string, Record<string, Record<string, { time: number; vertices: number[] }[]>>>;
       drawOrder?: { time: number; offsets?: { slot: string; offset: number }[] }[];
+      events?: { time: number; name: string; int?: number; float?: number; string?: string }[];
     }
   >;
 };
@@ -289,8 +291,47 @@ export function exportSpine42Json(
       bones: bonesAnim,
       ...(deformJson ? { deform: deformJson } : {}),
       ...(drawOrderTimeline.length > 1 ? { drawOrder: drawOrderTimeline } : {}),
+      ...(rawClip.events && rawClip.events.length > 0
+        ? {
+            events: rawClip.events.map((ev) => ({
+              time: round4(ev.time),
+              name: ev.name,
+              ...(ev.intParam !== undefined ? { int: ev.intParam } : {}),
+              ...(ev.floatParam !== undefined ? { float: round4(ev.floatParam) } : {}),
+              ...(ev.stringParam !== undefined ? { string: ev.stringParam } : {}),
+            })),
+          }
+        : {}),
     };
   }
+
+  // Collect all unique event definitions across clips
+  const eventsCatalog: Record<string, { int?: number; float?: number; string?: string }> = {};
+  for (const clip of Object.values(project.animations)) {
+    for (const ev of clip.events ?? []) {
+      if (!eventsCatalog[ev.name]) {
+        eventsCatalog[ev.name] = {
+          ...(ev.intParam !== undefined ? { int: ev.intParam } : {}),
+          ...(ev.floatParam !== undefined ? { float: ev.floatParam } : {}),
+          ...(ev.stringParam !== undefined ? { string: ev.stringParam } : {}),
+        };
+      }
+    }
+  }
+
+  // Export default skin + any authored multi-skin variants
+  const exportedSkins =
+    project.skins && project.skins.length > 0
+      ? project.skins.map((s) => ({
+          name: s.name,
+          attachments,
+        }))
+      : [
+          {
+            name: "default",
+            attachments,
+          },
+        ];
 
   return {
     skeleton: {
@@ -316,12 +357,8 @@ export function exportSpine42Json(
           })),
         }
       : {}),
-    skins: [
-      {
-        name: "default",
-        attachments,
-      },
-    ],
+    skins: exportedSkins,
+    ...(Object.keys(eventsCatalog).length > 0 ? { events: eventsCatalog } : {}),
     animations: animationsJson,
   };
 }
