@@ -590,20 +590,17 @@ export function StudioApp() {
                   </button>
                 ))}
 
-                {/* Question Mark (?) User Manual & Guided Tour Button on the Left Tools Pane */}
+                {/* Question Mark (?) User Manual & Guided Tour Button at the Bottom of the Left Tools Pane */}
                 <button
                   onClick={() => setShowUserManual(!showUserManual)}
-                  title="Interactive User Manual & Guided Tour (?)"
-                  className={`col-span-2 w-full h-9 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
+                  title="User Manual & Guided Tour (?)"
+                  className={`col-span-2 mx-auto w-10 h-10 rounded-full font-extrabold text-sm flex items-center justify-center transition ${
                     showUserManual
                       ? "liquid-glass-active"
                       : "liquid-glass-button text-amber-200 border-amber-400/35 hover:text-white"
                   }`}
                 >
-                  <ToolRailIcon id="help" />
-                  <span className="text-[8px] font-bold tracking-tight leading-none">
-                    ? Manual & Tour
-                  </span>
+                  ?
                 </button>
               </div>
             </aside>

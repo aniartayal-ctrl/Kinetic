@@ -891,14 +891,13 @@ public struct SpineForgeMainStudioView: View {
                         .tint(vm.isolateSelectedPart ? .cyan : .gray.opacity(0.3))
 
                         Button(action: { vm.showUserManualSheet.toggle() }) {
-                            VStack(spacing: 1) {
-                                Image(systemName: "questionmark.circle.fill")
-                                Text("Guide").font(.system(size: 8, weight: .bold))
-                            }
-                            .frame(width: 40, height: 38)
+                            Text("?")
+                                .font(.system(size: 15, weight: .heavy))
+                                .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(vm.showUserManualSheet ? .yellow : .yellow.opacity(0.35))
+                        .help("User Manual & Guided Tour (?)")
                     }
                     .padding(10)
                     .frame(width: 108)
