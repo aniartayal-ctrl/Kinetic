@@ -911,56 +911,73 @@ export function StudioApp() {
           )}
         </div>
 
-        {/* BOTTOM ROW: Photoshop Video Timeline, Unity AnimationEvents & Keyframe Dope Sheet Dock */}
+        {/* TIMELINE & DOPE SHEET DOCK (Can be stacked at the Top or Bottom of the Application) */}
         <footer
           className={`pointer-events-auto rounded-[28px] liquid-glass transition-all duration-300 flex flex-col overflow-hidden shrink-0 ${
             dopeSheetExpanded ? "h-56" : "h-14"
           }`}
         >
-          <div className="px-5 h-14 flex items-center gap-3 text-xs shrink-0">
-            <button
-              onClick={() => setIsPlaying(!isPlaying)}
-              className={`whitespace-nowrap shrink-0 px-4 py-1.5 rounded-full font-bold transition ${
-                isPlaying
-                  ? "bg-amber-400 text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.5)]"
-                  : "liquid-glass-active"
-              }`}
-            >
-              {isPlaying ? "Pause" : "Play"}
-            </button>
-
-            <div className="flex items-center gap-1 p-1 rounded-full liquid-glass-well shrink-0">
-              <select
-                value={activeClip}
-                onChange={(e) => setActiveClip(e.target.value)}
-                className="bg-transparent px-2.5 py-0.5 text-[11px] font-bold text-sky-300 focus:outline-none cursor-pointer"
+          <div className="px-3.5 h-14 flex items-center justify-between gap-2 text-xs shrink-0">
+            {/* Left Transport + Stack Top/Bottom Button + Clip Selector */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className={`whitespace-nowrap shrink-0 px-3.5 py-1.5 rounded-full font-bold transition ${
+                  isPlaying
+                    ? "bg-amber-400 text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.5)]"
+                    : "liquid-glass-active"
+                }`}
               >
-                {Object.keys(project.animations).map((clipName) => (
-                  <option key={clipName} value={clipName} className="bg-slate-950 text-white">
-                    Clip: {clipName} ({project.animations[clipName]!.duration}s)
-                  </option>
-                ))}
-              </select>
-              {(["idle", "anticipation", "strike", "zeus-bolt", "symbol-win", "chest-open"] as const).map(
-                (clipName) =>
-                  project.animations[clipName] ? (
-                    <button
-                      key={clipName}
-                      onClick={() => setActiveClip(clipName)}
-                      className={`whitespace-nowrap shrink-0 px-2 py-0.5 rounded-full text-[10.5px] font-semibold capitalize transition ${
-                        activeClip === clipName
-                          ? "bg-white/22 text-white shadow-sm"
-                          : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      {clipName}
-                    </button>
-                  ) : null,
-              )}
+                {isPlaying ? "Pause" : "Play"}
+              </button>
+
+              <button
+                onClick={() => setTimelineDock(timelineDock === "bottom" ? "top" : "bottom")}
+                title={
+                  timelineDock === "bottom"
+                    ? "Stack Timeline Bar on Top of Application"
+                    : "Stack Timeline Bar at Bottom of Application"
+                }
+                className="whitespace-nowrap shrink-0 px-2.5 py-1.5 rounded-full liquid-glass-button text-[11px] font-bold text-cyan-200 border-cyan-400/35 hover:text-white"
+              >
+                {timelineDock === "bottom" ? "↑ Stack Top" : "↓ Stack Bottom"}
+              </button>
+
+              <div className="flex items-center gap-1 p-1 rounded-full liquid-glass-well shrink-0">
+                <select
+                  value={activeClip}
+                  onChange={(e) => setActiveClip(e.target.value)}
+                  className="bg-transparent px-2 py-0.5 text-[11px] font-bold text-sky-300 focus:outline-none cursor-pointer"
+                >
+                  {Object.keys(project.animations).map((clipName) => (
+                    <option key={clipName} value={clipName} className="bg-slate-950 text-white">
+                      Clip: {clipName} ({project.animations[clipName]!.duration}s)
+                    </option>
+                  ))}
+                </select>
+                <div className="hidden 2xl:flex items-center gap-1">
+                  {(["idle", "anticipation", "strike", "zeus-bolt", "symbol-win"] as const).map(
+                    (clipName) =>
+                      project.animations[clipName] ? (
+                        <button
+                          key={clipName}
+                          onClick={() => setActiveClip(clipName)}
+                          className={`whitespace-nowrap shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize transition ${
+                            activeClip === clipName
+                              ? "bg-white/22 text-white shadow-sm"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          {clipName}
+                        </button>
+                      ) : null,
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* Scrubber + Unity Event Markers Overlay */}
-            <div className="flex-1 flex items-center gap-3 min-w-[140px]">
+            {/* Center Scrubber + Unity Event Markers Overlay */}
+            <div className="flex-1 flex items-center gap-2.5 min-w-[120px] px-1">
               <div className="relative flex-1 flex items-center">
                 <input
                   type="range"
@@ -996,69 +1013,75 @@ export function StudioApp() {
                   );
                 })}
               </div>
-              <span className="font-mono text-xs text-slate-300 whitespace-nowrap shrink-0">
+              <span className="font-mono text-[11px] text-slate-300 whitespace-nowrap shrink-0">
                 <strong className="text-white">{currentTime.toFixed(2)}s</strong> /{" "}
                 {(currentClipObj?.duration ?? 2.4).toFixed(1)}s
               </span>
             </div>
 
-            {/* Add Unity AnimationEvent Trigger Control */}
-            <div className="flex items-center gap-1 liquid-glass-well rounded-full px-2 py-0.5 shrink-0">
+            {/* Right Controls: Event Trigger, Speed, Bake, Dope Sheet & Stack Top/Bottom */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1 liquid-glass-well rounded-full px-2 py-0.5 shrink-0">
+                <select
+                  value={eventType}
+                  onChange={(e) => setEventType(e.target.value)}
+                  className="bg-transparent text-[10.5px] text-amber-200 font-semibold focus:outline-none"
+                >
+                  <option value="OnHit" className="bg-slate-950">⚡ OnHit</option>
+                  <option value="SpawnVFX" className="bg-slate-950">✨ SpawnVFX</option>
+                  <option value="PlaySFX" className="bg-slate-950">🔊 PlaySFX</option>
+                  <option value="CameraShake" className="bg-slate-950">💥 Shake</option>
+                </select>
+                <button
+                  onClick={() => addAnimationEventAtCurrentTime(eventType, `fx_${activeClip}_${eventType.toLowerCase()}`, 1.0)}
+                  title="Add Unity AnimationEvent & Spine Event at Playhead"
+                  className="px-2 py-0.5 rounded-full bg-amber-400/25 text-amber-200 text-[10px] font-bold hover:bg-amber-400/40"
+                >
+                  + Event
+                </button>
+              </div>
+
               <select
-                value={eventType}
-                onChange={(e) => setEventType(e.target.value)}
-                className="bg-transparent text-[11px] text-amber-200 font-semibold focus:outline-none"
+                value={playbackSpeed}
+                onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+                className="liquid-glass-well rounded-full px-2 py-1 text-[10.5px] text-slate-200 shrink-0"
               >
-                <option value="OnHit" className="bg-slate-950">⚡ OnHit</option>
-                <option value="SpawnVFX" className="bg-slate-950">✨ SpawnVFX</option>
-                <option value="PlaySFX" className="bg-slate-950">🔊 PlaySFX</option>
-                <option value="CameraShake" className="bg-slate-950">💥 CameraShake</option>
+                <option value={0.25} className="bg-slate-950">0.25×</option>
+                <option value={0.5} className="bg-slate-950">0.5×</option>
+                <option value={1} className="bg-slate-950">1.0×</option>
+                <option value={1.5} className="bg-slate-950">1.5×</option>
               </select>
+
               <button
-                onClick={() => addAnimationEventAtCurrentTime(eventType, `fx_${activeClip}_${eventType.toLowerCase()}`, 1.0)}
-                title="Add Unity AnimationEvent & Spine Event at Playhead"
-                className="px-2 py-0.5 rounded-full bg-amber-400/25 text-amber-200 text-[10px] font-bold hover:bg-amber-400/40"
+                onClick={bakeCurrentClipSprings}
+                className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[10.5px] font-semibold text-amber-200"
               >
-                + Event
+                Bake
+              </button>
+
+              <button
+                onClick={() => setDopeSheetExpanded(!dopeSheetExpanded)}
+                className={`whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full text-[10.5px] font-semibold transition ${
+                  dopeSheetExpanded
+                    ? "liquid-glass-active"
+                    : "liquid-glass-button text-sky-200"
+                }`}
+              >
+                Dope Sheet
+              </button>
+
+              <button
+                onClick={() => setTimelineDock(timelineDock === "bottom" ? "top" : "bottom")}
+                title={
+                  timelineDock === "bottom"
+                    ? "Stack Timeline Bar on Top of Application"
+                    : "Stack Timeline Bar at Bottom of Application"
+                }
+                className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[10.5px] font-bold text-cyan-200 hover:text-white"
+              >
+                {timelineDock === "bottom" ? "↑ Top" : "↓ Bottom"}
               </button>
             </div>
-
-            <select
-              value={playbackSpeed}
-              onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
-              className="liquid-glass-well rounded-full px-2 py-1 text-[11px] text-slate-200 shrink-0"
-            >
-              <option value={0.25} className="bg-slate-950">0.25×</option>
-              <option value={0.5} className="bg-slate-950">0.5×</option>
-              <option value={1} className="bg-slate-950">1.0×</option>
-              <option value={1.5} className="bg-slate-950">1.5×</option>
-            </select>
-
-            <button
-              onClick={bakeCurrentClipSprings}
-              className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[11px] font-semibold text-amber-200"
-            >
-              Bake Springs
-            </button>
-
-            <button
-              onClick={() => setDopeSheetExpanded(!dopeSheetExpanded)}
-              className="whitespace-nowrap shrink-0 px-3 py-1 rounded-full liquid-glass-button text-[11px] font-semibold text-sky-200"
-            >
-              {dopeSheetExpanded ? "Hide Dope Sheet" : "Dope Sheet"}
-            </button>
-
-            <button
-              onClick={() => setTimelineDock(timelineDock === "bottom" ? "top" : "bottom")}
-              title={
-                timelineDock === "bottom"
-                  ? "Stack Timeline Bar at Top of Screen"
-                  : "Stack Timeline Bar at Bottom of Screen"
-              }
-              className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[11px] font-bold text-cyan-200 hover:text-white"
-            >
-              {timelineDock === "bottom" ? "↑ Top" : "↓ Bottom"}
-            </button>
           </div>
 
           {dopeSheetExpanded && (

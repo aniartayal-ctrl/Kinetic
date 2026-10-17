@@ -1397,6 +1397,14 @@ public struct SpineForgeMainStudioView: View {
                 .tint(vm.isPlaying ? .orange : .cyan)
                 .controlSize(.small)
 
+                Button(vm.timelineAtTop ? "↓ Stack Bottom" : "↑ Stack Top") {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        vm.timelineAtTop.toggle()
+                    }
+                }
+                .controlSize(.small)
+                .help("Stack Timeline Bar on Top or Bottom of Application")
+
                 Picker("", selection: $vm.activeClip) {
                     ForEach(vm.project.animations.keys.sorted(), id: \.self) { clipName in
                         Text(clipName.capitalized).tag(clipName)
