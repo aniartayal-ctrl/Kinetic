@@ -1,8 +1,8 @@
 {
-  "name": "spineforge",
+  "name": "kinetic",
   "version": "1.0.0",
   "private": true,
-  "description": "Standalone 2D Mesh, Rigging, Weight-Painting & Animation Studio for Unity (Zero-Dependency C# Runtime + Spine 4.2 + Flipbook Sprite Sheet)",
+  "description": "Kinetic Pro — Apple Metal 2D Mesh, Rigging, Weight-Painting & AI Animation Studio for Unity",
   "scripts": {
     "dev": "next dev --port 3460",
     "build": "next build",
