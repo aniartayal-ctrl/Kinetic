@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { SpineForgeAnimator } from "@/core/animator";
+import { getSlotStageContext } from "@/core/batch-symbols-and-slot-stage";
+import { compute25DParallaxBoneOffsets } from "@/core/parallax-and-lipsync";
 import { RIG_BONE_PALETTE } from "@/core/schema";
 import { applyAffine, buildSkeleton, deformMeshVerticesCPU } from "@/core/solver";
+import { evaluateElementalVfx, generateUnity2DColliders } from "@/core/vfx-colliders-profiler";
 import { SpineForgeWebGLRenderer, type GhostFramePass } from "@/core/webgl-renderer";
 import { buildPartMesh, computeVertexHeatmapColors } from "@/core/weights";
 import { useStudioStore } from "@/store/useStudioStore";
@@ -24,6 +27,9 @@ export function StudioViewport() {
     applyLiquifyBrush,
     setBoneKeyframeAtCurrentTime,
     setCurrentTime,
+    setParallaxConfig,
+    showSlotStage,
+    loadSymbolRig,
   } = useStudioStore();
 
   const glCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -149,9 +155,11 @@ export function StudioViewport() {
         }
 
         animator.setClip(store.activeClip);
+        const parallaxOffsets = compute25DParallaxBoneOffsets(store.project, store.parallax, evalTime);
         const frame = animator.evaluateAt(
           evalTime,
           store.mode === "rig" || store.mode === "mesh" ? 0 : dt,
+          store.mode === "rig" || store.mode === "mesh" ? undefined : parallaxOffsets,
         );
 
         const visibleOrder = frame.order.filter((name) => !store.hiddenParts.includes(name));
@@ -197,7 +205,7 @@ export function StudioViewport() {
         ];
 
         // 0A. Weapon Slash Ribbon Trail (when showSlashTrail is active during action clips)
-        if (store.showSlashTrail && ghostAnim && store.activeClip !== "idle" && store.mode === "animate") {
+        if (store.showSlashTrail && ghostAnim && store.activeClip !== "idle" && (store.mode === "animate" || store.mode === "auto")) {
           const weaponIdx = store.project.bones.findIndex((b) => b.name === "weapon");
           if (weaponIdx >= 0) {
             const trailSteps = 10;
@@ -237,6 +245,97 @@ export function StudioViewport() {
               ctx.restore();
             }
           }
+        }
+
+        // 0A-2. GPU Elemental VFX & Particle System (Lightning Bolts, Fire Aura, Shockwaves, Coin Fountain, Star Sparks)
+        if (store.activeVfx !== "none") {
+          const weaponIdx = store.project.bones.findIndex((b) => b.name === "weapon");
+          const wMat = weaponIdx >= 0 ? frame.world[weaponIdx]! : frame.world[0]!;
+          const rMat = frame.world[0]!;
+          const vfxPrims = evaluateElementalVfx(
+            store.project,
+            store.activeVfx,
+            evalTime,
+            [wMat[4], wMat[5]],
+            [rMat[4], rMat[5]],
+          );
+          ctx.save();
+          for (const prim of vfxPrims) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, prim.alpha));
+            if (prim.kind === "bolt" && prim.points.length >= 2) {
+              ctx.strokeStyle = prim.color;
+              ctx.lineWidth = prim.width;
+              ctx.shadowColor = "#38bdf8";
+              ctx.shadowBlur = 12;
+              ctx.beginPath();
+              const [sx0, sy0] = toScreen(prim.points[0]![0], prim.points[0]![1]);
+              ctx.moveTo(sx0, sy0);
+              for (let i = 1; i < prim.points.length; i++) {
+                const [sxi, syi] = toScreen(prim.points[i]![0], prim.points[i]![1]);
+                ctx.lineTo(sxi, syi);
+              }
+              ctx.stroke();
+            } else if (prim.kind === "ring") {
+              const [cx, cy] = toScreen(prim.x, prim.y);
+              ctx.strokeStyle = prim.color;
+              ctx.lineWidth = prim.width;
+              ctx.beginPath();
+              ctx.ellipse(cx, cy, prim.rx * scale, prim.ry * scale, 0, 0, Math.PI * 2);
+              ctx.stroke();
+            } else if (prim.kind === "particle") {
+              const [px, py] = toScreen(prim.x, prim.y);
+              const pr = prim.radius * scale;
+              ctx.fillStyle = prim.color;
+              ctx.beginPath();
+              if (prim.shape === "coin") {
+                ctx.ellipse(
+                  px,
+                  py,
+                  Math.max(2, Math.abs(Math.cos(prim.rotation)) * pr),
+                  pr,
+                  0,
+                  0,
+                  Math.PI * 2,
+                );
+              } else {
+                ctx.arc(px, py, pr, 0, Math.PI * 2);
+              }
+              ctx.fill();
+            }
+          }
+          ctx.restore();
+        }
+
+        // 0A-3. Unity 2D Hitbox & PolygonCollider2D Overlay (when showHitboxes is enabled)
+        if (store.showHitboxes) {
+          const colliders = generateUnity2DColliders(store.project, 100);
+          ctx.save();
+          for (const col of colliders) {
+            const bIdx = store.project.bones.findIndex((b) => b.name === col.boneName);
+            const m = bIdx >= 0 ? frame.world[bIdx]! : frame.world[0]!;
+            const stroke =
+              col.role === "hitbox_weapon"
+                ? "#f43f5e"
+                : col.role === "hurtbox_head"
+                  ? "#38bdf8"
+                  : "#22c55e";
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 2]);
+            ctx.beginPath();
+            col.polygonPathsMeters.forEach(([lxMeters, lyMeters], idx) => {
+              const localPxX = lxMeters * 100;
+              const localPxY = -lyMeters * 100;
+              const [wx, wy] = applyAffine(m, localPxX, localPxY);
+              const [sx, sy] = toScreen(wx, wy);
+              if (idx === 0) ctx.moveTo(sx, sy);
+              else ctx.lineTo(sx, sy);
+            });
+            ctx.closePath();
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          ctx.restore();
         }
 
         // 0B. Selected Bone Motion Arc Trajectory (when showMotionArcs is active)
@@ -491,6 +590,13 @@ export function StudioViewport() {
     pointerRigPosRef.current = pt;
     lastBrushRigPosRef.current = pt;
 
+    // Update 2.5D Parallax Look-At target from cursor position on canvas
+    const normX = Math.max(-1, Math.min(1, (pt.x / Math.max(1, project.width) - 0.5) * 2));
+    const normY = Math.max(-1, Math.min(1, (pt.y / Math.max(1, project.height) - 0.4) * 2));
+    if (useStudioStore.getState().parallax.enabled && !draggingBoneRef.current && !isPaintingRef.current) {
+      setParallaxConfig({ lookX: Number(normX.toFixed(2)), lookY: Number(normY.toFixed(2)) });
+    }
+
     if (isPaintingRef.current && mode === "weights" && selectedPart) {
       applyWeightBrush(selectedPart, pt.x, pt.y);
       return;
@@ -548,11 +654,61 @@ export function StudioViewport() {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
+        onPointerLeave={() => {
+          handlePointerUp();
+          setParallaxConfig({ lookX: 0, lookY: 0 });
+        }}
         className={`absolute inset-0 w-full h-full ${
           mode === "weights" || mode === "liquify" ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"
         }`}
       />
+
+      {/* In-Viewport 5×3 Slot Reel & Big-Win Context Stage Overlay */}
+      {showSlotStage && (
+        <div className="absolute left-1/2 top-22 -translate-x-1/2 z-10 pointer-events-auto rounded-3xl liquid-glass p-4 border border-amber-400/35 shadow-[0_0_50px_rgba(251,191,36,0.2)] flex flex-col items-center gap-2.5">
+          {(() => {
+            const stageCtx = getSlotStageContext(project.id);
+            return (
+              <>
+                <div className="flex items-center justify-between w-full px-1 text-[11px]">
+                  <span className="font-bold uppercase tracking-wider text-amber-300">
+                    5×3 Slot Reel Context Stage (Click any symbol to rig & animate it)
+                  </span>
+                  <span className="font-mono text-sky-300">64px Cell Readability Check</span>
+                </div>
+
+                {/* 5 Columns × 3 Rows Slot Grid */}
+                <div className="grid grid-cols-5 gap-2 p-2.5 rounded-2xl bg-slate-950/75 border border-amber-400/30">
+                  {stageCtx.reelGrid.map((col, cIdx) => (
+                    <div key={cIdx} className="flex flex-col gap-2">
+                      {col.map((role, rIdx) => {
+                        const sym = stageCtx.symbols.find((s) => s.role === role) ?? stageCtx.symbols[0]!;
+                        const isWinningRow = rIdx === 1;
+                        return (
+                          <button
+                            key={`${cIdx}-${rIdx}`}
+                            onClick={() => loadSymbolRig(sym.role)}
+                            title={`Click to open ${sym.label} in Auto Rig Studio`}
+                            className={`w-16 h-16 rounded-xl p-1 flex flex-col items-center justify-center transition hover:scale-110 ${
+                              isWinningRow
+                                ? "bg-amber-400/20 border-2 border-amber-400 shadow-[0_0_16px_rgba(250,204,21,0.5)] animate-pulse"
+                                : "bg-white/5 border border-white/10 opacity-80 hover:opacity-100"
+                            }`}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={sym.src} alt={sym.label} className="w-12 h-12 object-contain" />
+                            <span className="text-[8px] font-mono uppercase text-amber-200">{sym.role}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }

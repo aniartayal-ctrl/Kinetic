@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { autoRigProject } from "../core/auto-rigger";
+import { generateBatch8SymbolPack } from "../core/batch-symbols-and-slot-stage";
+import { applyVoiceLipSyncToClip, compute25DParallaxBoneOffsets } from "../core/parallax-and-lipsync";
 import { inferVisualPhysics, runFullAutoModePipeline } from "../core/physics-and-principles";
 import { BUILTIN_PRESETS } from "../core/presets";
 import { validateProject } from "../core/schema";
+import { evaluateElementalVfx, generateUnity2DColliders, profileProjectForUnityMobile } from "../core/vfx-colliders-profiler";
 import { paintFfdLiquifyStroke } from "../core/weights";
 import { buildCompleteUnityExportBundle } from "./node-bundle-builder";
 import type { Spine42Json } from "./spine42-exporter";
@@ -129,4 +132,33 @@ test("1-Click AI Auto-Rigger and Liquify FFD Warp Brush produce valid rigs and v
   assert.ok(autoShipped.animations["zeus-bolt"]);
   assert.ok(autoShipped.animations["symbol-win"]);
   assert.ok(autoShipped.animations["chest-open"]);
+
+  // Verify 2.5D Parallax, Voice Lip-Sync, Elemental VFX, Unity Colliders, Mobile VRAM Profiler & Batch 8-Symbols
+  const parallaxOffsets = compute25DParallaxBoneOffsets(autoShipped, {
+    enabled: true,
+    lookX: 0.75,
+    lookY: -0.35,
+    depthIntensity: 1.0,
+    autoOrbit: false,
+  }, 0.5);
+  assert.ok((parallaxOffsets["head"]?.x ?? 0) > 0, "Head shifts right when looking right");
+  assert.ok((parallaxOffsets["arm-back"]?.x ?? 0) < 0, "Back arm shifts in inverse parallax");
+
+  const lipSynced = applyVoiceLipSyncToClip(autoShipped, autoShipped.animations.strike!, "battle_cry");
+  assert.ok((lipSynced.boneTracks["head"]?.length ?? 0) >= 12);
+
+  const vfxPrims = evaluateElementalVfx(autoShipped, "lightning_bolts", 0.5, [300, 400], [320, 1000]);
+  assert.equal(vfxPrims.length, 3);
+
+  const colliders = generateUnity2DColliders(autoShipped, 100);
+  assert.equal(colliders.length, autoShipped.parts.length);
+  assert.ok(colliders.some((c) => c.role === "hitbox_weapon"));
+
+  const vramReport = profileProjectForUnityMobile(autoShipped, 0.5);
+  assert.equal(vramReport.batchedDrawCalls, 1);
+  assert.ok(vramReport.astcCompressedVramMB < vramReport.uncompressedVramMB);
+
+  const symbolPack = generateBatch8SymbolPack("astral-forge");
+  assert.equal(symbolPack.length, 8);
+  assert.deepEqual(validateProject(symbolPack[0]!), []);
 });

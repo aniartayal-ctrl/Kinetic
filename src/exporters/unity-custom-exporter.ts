@@ -15,6 +15,7 @@
 
 import { bakeClipConstraintsToKeyframes, SpineForgeAnimator } from "../core/animator";
 import type { SpineForgeProject } from "../core/schema";
+import { generateUnity2DColliders, type UnityCollider2DExport } from "../core/vfx-colliders-profiler";
 import { buildPartMesh } from "../core/weights";
 import type { PackedAtlasLayout } from "./atlas-packer";
 
@@ -105,6 +106,7 @@ export type UnitySfRigDocument = {
   atlasHeight: number;
   bones: UnitySfRigBone[];
   submeshes: UnitySfRigSubmesh[];
+  colliders: UnityCollider2DExport[];
   skins: UnitySfRigSkin[];
   animations: UnitySfRigClip[];
 };
@@ -292,6 +294,7 @@ export function exportUnityCustomRig(
     atlasHeight: atlas.height,
     bones,
     submeshes,
+    colliders: generateUnity2DColliders(project, ppu),
     skins,
     animations,
   };

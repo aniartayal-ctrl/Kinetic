@@ -56,6 +56,8 @@ export function StudioApp() {
     enable3DRelight,
     lightAngleDeg,
     lightIntensity,
+    showHitboxes,
+    showSlotStage,
     isolatePart,
     brushMode,
     liquifyMode,
@@ -209,6 +211,34 @@ export function StudioApp() {
     a.download = `${project.id}-unity-bundle.zip`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportTransparentWebM = () => {
+    const glCanvas = document.querySelector("canvas") as HTMLCanvasElement | null;
+    if (!glCanvas || typeof glCanvas.captureStream !== "function") return;
+    const stream = glCanvas.captureStream(30);
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+      ? "video/webm;codecs=vp9"
+      : "video/webm";
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks: BlobPart[] = [];
+    recorder.ondataavailable = (ev) => {
+      if (ev.data.size > 0) chunks.push(ev.data);
+    };
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project.id}-${activeClip}.webm`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+    recorder.start();
+    const durMs = Math.round((project.animations[activeClip]?.duration ?? 2.0) * 1000);
+    setTimeout(() => {
+      if (recorder.state !== "inactive") recorder.stop();
+    }, durMs);
   };
 
   const handleSmartCutUpload = async (file: File) => {
@@ -544,6 +574,8 @@ export function StudioApp() {
                   { key: "showMotionArcs", short: "Arcs", active: showMotionArcs },
                   { key: "showSlashTrail", short: "Trail", active: showSlashTrail },
                   { key: "enable3DRelight", short: "3D Lit", active: enable3DRelight },
+                  { key: "showHitboxes", short: "Box2D", active: showHitboxes },
+                  { key: "showSlotStage", short: "Reels", active: showSlotStage },
                   { key: "isolatePart", short: "Solo", active: isolatePart },
                 ] as const
               ).map((ov) => (
@@ -1127,6 +1159,12 @@ export function StudioApp() {
                   className="whitespace-nowrap px-4 py-2 rounded-full liquid-glass-button text-xs font-semibold text-slate-200"
                 >
                   Close Preview
+                </button>
+                <button
+                  onClick={handleExportTransparentWebM}
+                  className="whitespace-nowrap px-4 py-2 rounded-full liquid-glass-button text-xs font-bold text-amber-200"
+                >
+                  Export Transparent .WebM Video
                 </button>
                 <button
                   onClick={handleDownloadZip}

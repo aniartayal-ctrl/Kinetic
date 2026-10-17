@@ -232,7 +232,7 @@ export class SpineForgeAnimator {
     }
   }
 
-  evaluateAt(timestamp: number, dt = 1 / 60): EvaluatedFrame {
+  evaluateAt(timestamp: number, dt = 1 / 60, extraBoneOffsets?: Record<string, BonePose>): EvaluatedFrame {
     const { project, bones } = this.skeleton;
     const clip = project.animations[this.currentClipName];
     const duration = clip?.duration ?? 2.4;
@@ -245,6 +245,14 @@ export class SpineForgeAnimator {
 
     const basePoses = bones.map((bone, i) => {
       const p = sampleTransformTrack(clip?.boneTracks[bone.name], t);
+      const extra = extraBoneOffsets?.[bone.name];
+      if (extra) {
+        p.r += extra.r;
+        p.x += extra.x;
+        p.y += extra.y;
+        p.sx *= extra.sx;
+        p.sy *= extra.sy;
+      }
       if (i === 0 && shakePx > 0) {
         p.x += Math.sin(t * 95) * shakePx;
         p.y += Math.cos(t * 77) * shakePx * 0.6;

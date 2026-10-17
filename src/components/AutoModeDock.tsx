@@ -1,9 +1,15 @@
 "use client";
 
+import { getThemeSymbols } from "@/core/batch-symbols-and-slot-stage";
+import { VOICE_PHRASE_PRESETS } from "@/core/parallax-and-lipsync";
 import {
   FAMOUS_GAME_ACTIONS,
   type AutoArchetypeId,
 } from "@/core/physics-and-principles";
+import {
+  profileProjectForUnityMobile,
+  type ElementalVfxType,
+} from "@/core/vfx-colliders-profiler";
 import { useStudioStore } from "@/store/useStudioStore";
 
 const ARCHETYPE_OPTIONS: { id: AutoArchetypeId; label: string }[] = [
@@ -15,14 +21,33 @@ const ARCHETYPE_OPTIONS: { id: AutoArchetypeId; label: string }[] = [
   { id: "treasure_chest", label: "Bonus Treasure Chest" },
 ];
 
+const VFX_OPTIONS: { id: ElementalVfxType; label: string }[] = [
+  { id: "none", label: "Off" },
+  { id: "lightning_bolts", label: "⚡ Bolts" },
+  { id: "fire_aura", label: "🔥 Fire" },
+  { id: "shockwave_rings", label: "💥 Rings" },
+  { id: "coin_fountain", label: "🪙 Coins" },
+  { id: "star_sparks", label: "✨ Stars" },
+];
+
 export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<void> }) {
   const {
+    project,
     activeClip,
     autoArchetype,
     principles,
     physicsReport,
+    parallax,
+    activeVfx,
+    mobileProfileScale,
+    loadPreset,
+    loadSymbolRig,
     runAutoModeSelectAction,
     updatePrinciples,
+    setParallaxConfig,
+    applyVoiceLipSync,
+    setActiveVfx,
+    setMobileProfileScale,
   } = useStudioStore();
 
   const categories = [
@@ -31,6 +56,9 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
     "Slot Symbols & Chests",
     "Core & Tease",
   ] as const;
+
+  const themeSymbols = getThemeSymbols(project.id);
+  const mobileProfile = profileProjectForUnityMobile(project, mobileProfileScale);
 
   return (
     <aside className="pointer-events-auto w-84 rounded-[26px] liquid-glass flex flex-col overflow-hidden shrink-0">
@@ -78,7 +106,6 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
             ))}
           </select>
 
-          {/* Inferred Physical Telemetry Pills */}
           <div className="grid grid-cols-3 gap-1.5 text-[10px] font-mono">
             <div className="p-1.5 rounded-xl bg-white/6 border border-white/10 text-center">
               <div className="text-slate-400">Mass</div>
@@ -98,7 +125,6 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
             </div>
           </div>
 
-          {/* Per-Part Material & Spring Stiffness Tags */}
           <div className="flex flex-wrap gap-1 pt-0.5">
             {physicsReport.partTelemetry.slice(0, 5).map((pt) => (
               <span
@@ -111,7 +137,97 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
           </div>
         </div>
 
-        {/* 3. 12 Principles of 2D Animation Live Dials */}
+        {/* 3. GPU Elemental VFX & 2.5D Parallax / Voice Lip-Sync Card */}
+        <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-amber-300">
+              Elemental VFX & 2.5D Parallax
+            </span>
+            <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={parallax.enabled}
+                onChange={(e) => setParallaxConfig({ enabled: e.target.checked })}
+                className="accent-sky-400"
+              />
+              2.5D Turn
+            </label>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1">
+            {VFX_OPTIONS.map((vfx) => (
+              <button
+                key={vfx.id}
+                onClick={() => setActiveVfx(vfx.id)}
+                className={`py-1 px-1.5 rounded-lg text-[10.5px] font-semibold transition ${
+                  activeVfx === vfx.id
+                    ? "bg-amber-400 text-slate-950 shadow-sm"
+                    : "bg-white/6 text-slate-300 hover:bg-white/12"
+                }`}
+              >
+                {vfx.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Voice Lip-Sync Triggers */}
+          <div className="pt-1 space-y-1">
+            <div className="text-[10px] text-slate-400 font-semibold">
+              1-Click Voice Lip-Sync & Eye-Blink:
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {VOICE_PHRASE_PRESETS.map((vp) => (
+                <button
+                  key={vp.id}
+                  onClick={() => applyVoiceLipSync(vp.id)}
+                  className="px-2 py-0.5 rounded-full liquid-glass-button text-[9.5px] font-medium text-sky-200 hover:text-white"
+                >
+                  🎙 {vp.transcript}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Batch 8-Symbol Pack Auto-Rigger (Switch between Hero & All 8 Slot Symbols) */}
+        <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-300">
+              Batch 8-Symbol Auto-Rigger
+            </span>
+            <button
+              onClick={() =>
+                loadPreset(project.id.includes("solara") ? "sands-of-solara" : "astral-forge")
+              }
+              className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 font-semibold"
+            >
+              Load Hero Rig
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {themeSymbols.map((sym) => {
+              const active = project.id.endsWith(`-${sym.role}`);
+              return (
+                <button
+                  key={sym.role}
+                  onClick={() => loadSymbolRig(sym.role)}
+                  title={`Auto-Rig & Animate ${sym.label}`}
+                  className={`p-1.5 rounded-xl border flex flex-col items-center gap-0.5 transition ${
+                    active
+                      ? "bg-emerald-400/25 border-emerald-300 text-white"
+                      : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={sym.src} alt={sym.label} className="w-8 h-8 object-contain" />
+                  <span className="text-[9px] font-mono uppercase font-bold">{sym.role}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 5. 12 Principles of 2D Animation Live Dials */}
         <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-purple-300">
@@ -187,7 +303,50 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
           </div>
         </div>
 
-        {/* 4. 14 Famous Slot & Game Actions (Click Any Action to Auto-Mesh, Auto-Rig, Animate & Play) */}
+        {/* 6. Unity Mobile VRAM / Overdraw / Draw-Call Profiler (@1x vs @0.5x) */}
+        <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-sky-300">
+              Unity Mobile VRAM Profiler
+            </span>
+            <div className="flex gap-1">
+              {([1, 0.5] as const).map((sc) => (
+                <button
+                  key={sc}
+                  onClick={() => setMobileProfileScale(sc)}
+                  className={`px-2 py-0.5 rounded-full text-[9.5px] font-mono font-bold ${
+                    mobileProfileScale === sc
+                      ? "bg-sky-400 text-slate-950"
+                      : "bg-white/8 text-slate-300"
+                  }`}
+                >
+                  @{sc}x
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 text-[10px] font-mono">
+            <div className="p-1.5 rounded-xl bg-white/6 border border-white/10 text-center">
+              <div className="text-slate-400">ASTC VRAM</div>
+              <div className="text-emerald-300 font-bold">{mobileProfile.astcCompressedVramMB} MB</div>
+            </div>
+            <div className="p-1.5 rounded-xl bg-white/6 border border-white/10 text-center">
+              <div className="text-slate-400">Overdraw</div>
+              <div className="text-sky-300 font-bold">
+                {mobileProfile.overdrawRatio}× (-{mobileProfile.contourOverdrawSavingsPct}%)
+              </div>
+            </div>
+            <div className="p-1.5 rounded-xl bg-white/6 border border-white/10 text-center">
+              <div className="text-slate-400">Draw Calls</div>
+              <div className="text-amber-300 font-bold">{mobileProfile.batchedDrawCalls} Batch</div>
+            </div>
+          </div>
+          <div className="text-[10px] text-emerald-300 font-mono text-center">
+            Grade: {mobileProfile.performanceGrade}
+          </div>
+        </div>
+
+        {/* 7. 14 Famous Slot & Game Actions (Click Any Action to Auto-Mesh, Auto-Rig, Animate & Play) */}
         <div className="space-y-3">
           {categories.map((cat) => {
             const items = FAMOUS_GAME_ACTIONS.filter((a) => a.category === cat);

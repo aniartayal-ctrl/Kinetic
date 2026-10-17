@@ -66,6 +66,16 @@ namespace SpineForge
     }
 
     [Serializable]
+    public class SfRigCollider2D
+    {
+        public string partName;
+        public string boneName;
+        public string colliderType;
+        public string role;
+        public float[] boxMeters;
+    }
+
+    [Serializable]
     public class SfRigSkin
     {
         public string name;
@@ -103,6 +113,7 @@ namespace SpineForge
         public int atlasHeight;
         public SfRigBone[] bones;
         public SfRigSubmesh[] submeshes;
+        public SfRigCollider2D[] colliders;
         public SfRigSkin[] skins;
         public SfRigClip[] animations;
     }

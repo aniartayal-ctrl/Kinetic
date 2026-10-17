@@ -18328,6 +18328,218 @@
       ]
     }
   ],
+  "colliders": [
+    {
+      "partName": "arm-upper",
+      "boneName": "arm",
+      "colliderType": "BoxCollider2D",
+      "role": "attachment_bounds",
+      "polygonPathsMeters": [
+        [
+          -0.3436,
+          0.1478
+        ],
+        [
+          0.5686,
+          0.1478
+        ],
+        [
+          0.5686,
+          -1.7205
+        ],
+        [
+          -0.3436,
+          -1.7205
+        ]
+      ],
+      "boxMeters": [
+        0.8,
+        7.3867,
+        0.9122,
+        1.8684
+      ]
+    },
+    {
+      "partName": "hair",
+      "boneName": "head",
+      "colliderType": "BoxCollider2D",
+      "role": "attachment_bounds",
+      "polygonPathsMeters": [
+        [
+          -1.4378,
+          0.4826
+        ],
+        [
+          1.3856,
+          0.4826
+        ],
+        [
+          1.3856,
+          -2.4358
+        ],
+        [
+          -1.4378,
+          -2.4358
+        ]
+      ],
+      "boxMeters": [
+        -0.3294,
+        7.9334,
+        2.8234,
+        2.9184
+      ]
+    },
+    {
+      "partName": "head",
+      "boneName": "head",
+      "colliderType": "BoxCollider2D",
+      "role": "hurtbox_head",
+      "polygonPathsMeters": [
+        [
+          -1.1916,
+          1.815
+        ],
+        [
+          1.0671,
+          1.815
+        ],
+        [
+          1.0671,
+          -0.4951
+        ],
+        [
+          -1.1916,
+          -0.4951
+        ]
+      ],
+      "boxMeters": [
+        -0.3656,
+        9.5699,
+        2.2587,
+        2.3101
+      ]
+    },
+    {
+      "partName": "body",
+      "boneName": "root",
+      "colliderType": "BoxCollider2D",
+      "role": "hurtbox_body",
+      "polygonPathsMeters": [
+        [
+          -3.37,
+          9.1681
+        ],
+        [
+          1.5094,
+          9.1681
+        ],
+        [
+          1.5094,
+          -0.275
+        ],
+        [
+          -3.37,
+          -0.275
+        ]
+      ],
+      "boxMeters": [
+        -0.9303,
+        4.4465,
+        4.8794,
+        9.4431
+      ]
+    },
+    {
+      "partName": "arm-back",
+      "boneName": "arm-back",
+      "colliderType": "BoxCollider2D",
+      "role": "attachment_bounds",
+      "polygonPathsMeters": [
+        [
+          -0.8195,
+          0.437
+        ],
+        [
+          0.3822,
+          0.437
+        ],
+        [
+          0.3822,
+          -3.6689
+        ],
+        [
+          -0.8195,
+          -3.6689
+        ]
+      ],
+      "boxMeters": [
+        -1.4588,
+        6.304,
+        1.2017,
+        4.106
+      ]
+    },
+    {
+      "partName": "staff",
+      "boneName": "weapon",
+      "colliderType": "BoxCollider2D",
+      "role": "hitbox_weapon",
+      "polygonPathsMeters": [
+        [
+          -0.9469,
+          3.3043
+        ],
+        [
+          1.348,
+          3.3043
+        ],
+        [
+          1.348,
+          -7.1019
+        ],
+        [
+          -0.9469,
+          -7.1019
+        ]
+      ],
+      "boxMeters": [
+        2.2225,
+        5.4712,
+        2.2949,
+        10.4062
+      ]
+    },
+    {
+      "partName": "forearm",
+      "boneName": "forearm",
+      "colliderType": "BoxCollider2D",
+      "role": "attachment_bounds",
+      "polygonPathsMeters": [
+        [
+          -0.4085,
+          1.0216
+        ],
+        [
+          1.3072,
+          1.0216
+        ],
+        [
+          1.3072,
+          -0.2819
+        ],
+        [
+          -0.4085,
+          -0.2819
+        ]
+      ],
+      "boxMeters": [
+        1.4334,
+        7.0028,
+        1.7157,
+        1.3035
+      ]
+    }
+  ],
   "skins": [
     {
       "name": "default",

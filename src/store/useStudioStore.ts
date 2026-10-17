@@ -3,6 +3,12 @@
 import { create } from "zustand";
 import { bakeClipConstraintsToKeyframes, sampleDeformTrack } from "@/core/animator";
 import { autoRigProject } from "@/core/auto-rigger";
+import { buildSymbolRigProject, getThemeSymbols, type SlotSymbolRole } from "@/core/batch-symbols-and-slot-stage";
+import {
+  applyVoiceLipSyncToClip,
+  DEFAULT_PARALLAX_CONFIG,
+  type ParallaxLookAtConfig,
+} from "@/core/parallax-and-lipsync";
 import {
   DEFAULT_12_PRINCIPLES,
   inferVisualPhysics,
@@ -21,6 +27,7 @@ import {
   type SpineForgeProject,
   type TransformKey,
 } from "@/core/schema";
+import type { ElementalVfxType } from "@/core/vfx-colliders-profiler";
 import {
   buildPartMesh,
   paintFfdLiquifyStroke,
@@ -49,7 +56,9 @@ type OverlayToggleKey =
   | "showOnionSkin"
   | "showMotionArcs"
   | "showSlashTrail"
-  | "enable3DRelight";
+  | "enable3DRelight"
+  | "showHitboxes"
+  | "showSlotStage";
 
 type StudioState = {
   project: SpineForgeProject;
@@ -75,6 +84,11 @@ type StudioState = {
   enable3DRelight: boolean;
   lightAngleDeg: number;
   lightIntensity: number;
+  showHitboxes: boolean;
+  showSlotStage: boolean;
+  parallax: ParallaxLookAtConfig;
+  activeVfx: ElementalVfxType;
+  mobileProfileScale: 1 | 0.5;
 
   // Weight & Liquify brush state
   brushMode: WeightBrushMode;
@@ -119,6 +133,11 @@ type StudioState = {
   runOneClickAutoRig: () => void;
   runAutoModeSelectAction: (actionId: string, archetype?: AutoArchetypeId) => void;
   updatePrinciples: (patch: Partial<AnimationPrinciplesConfig>) => void;
+  setParallaxConfig: (patch: Partial<ParallaxLookAtConfig>) => void;
+  applyVoiceLipSync: (phraseId: string) => void;
+  setActiveVfx: (vfx: ElementalVfxType) => void;
+  setMobileProfileScale: (scale: 1 | 0.5) => void;
+  loadSymbolRig: (role: SlotSymbolRole) => void;
   updateBone: (boneName: string, patch: Partial<RigBone>) => void;
   addBone: (parentBoneName: string, name: string, x: number, y: number) => void;
   updatePart: (partName: string, patch: Partial<RigPart>) => void;
@@ -180,6 +199,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   enable3DRelight: true,
   lightAngleDeg: -38,
   lightIntensity: 0.55,
+  showHitboxes: false,
+  showSlotStage: false,
+  parallax: { ...DEFAULT_PARALLAX_CONFIG },
+  activeVfx: "lightning_bolts",
+  mobileProfileScale: 1,
 
   brushMode: "add",
   liquifyMode: "push",
@@ -340,6 +364,48 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     };
     set({ principles: nextPrinciples });
     state.pushHistory("Tuned 12 Principles", nextProject);
+  },
+
+  setParallaxConfig: (patch) =>
+    set((state) => ({
+      parallax: { ...state.parallax, ...patch },
+    })),
+
+  applyVoiceLipSync: (phraseId) => {
+    const state = get();
+    const clip = state.project.animations[state.activeClip];
+    if (!clip) return;
+    const synced = applyVoiceLipSyncToClip(state.project, clip, phraseId);
+    const nextProject = {
+      ...state.project,
+      animations: {
+        ...state.project.animations,
+        [state.activeClip]: synced,
+      },
+    };
+    state.pushHistory(`Voice Lip-Sync (${phraseId})`, nextProject);
+  },
+
+  setActiveVfx: (activeVfx) => set({ activeVfx }),
+  setMobileProfileScale: (mobileProfileScale) => set({ mobileProfileScale }),
+
+  loadSymbolRig: (role) => {
+    const state = get();
+    const themeId = state.project.id.includes("solara") ? "sands-of-solara" : "astral-forge";
+    const descriptors = getThemeSymbols(themeId);
+    const desc = descriptors.find((d) => d.role === role) ?? descriptors[0]!;
+    const symProj = buildSymbolRigProject(themeId, desc);
+    const { report } = inferVisualPhysics(symProj, "slot_symbol");
+    set({
+      project: symProj,
+      selectedBone: "chest",
+      selectedPart: "body",
+      activeClip: desc.defaultClip,
+      currentTime: 0,
+      physicsReport: report,
+      history: [makeSnapshot(`Symbol Rig: ${desc.label}`, symProj)],
+      historyIndex: 0,
+    });
   },
 
   updateBone: (boneName, patch) => {
