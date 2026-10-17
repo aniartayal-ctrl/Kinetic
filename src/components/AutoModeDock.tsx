@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { getThemeSymbols } from "@/core/batch-symbols-and-slot-stage";
 import { VOICE_PHRASE_PRESETS } from "@/core/parallax-and-lipsync";
 import {
@@ -31,7 +32,13 @@ const VFX_OPTIONS: { id: ElementalVfxType; label: string }[] = [
   { id: "star_sparks", label: "✨ Stars" },
 ];
 
-export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<void> }) {
+export function AutoModeDock({
+  onShipToUnity,
+  onHidePane,
+}: {
+  onShipToUnity: () => Promise<void>;
+  onHidePane?: () => void;
+}) {
   const {
     project,
     activeClip,
@@ -45,6 +52,7 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
     slotOrientation,
     loadPreset,
     loadSymbolRig,
+    runOneClickAutoRig,
     runAutoModeSelectAction,
     updatePrinciples,
     setParallaxConfig,
@@ -54,6 +62,8 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
     setSlotStageMode,
     setSlotOrientation,
   } = useStudioStore();
+
+  const [isShaded, setIsShaded] = useState(false);
 
   const categories = [
     "Famous Game Actions",
@@ -66,26 +76,57 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
   const mobileProfile = profileProjectForUnityMobile(project, mobileProfileScale);
 
   return (
-    <aside className="pointer-events-auto w-84 rounded-[26px] liquid-glass flex flex-col overflow-hidden shrink-0">
-      {/* 1. Header + 1-Click Ship Button */}
-      <div className="p-3.5 border-b border-white/12 flex items-center justify-between gap-2 shrink-0">
-        <div>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 block">
-            1-Click Auto Studio (A)
+    <aside
+      className={`pointer-events-auto w-84 rounded-[26px] liquid-glass flex flex-col overflow-hidden transition-all ${
+        isShaded ? "shrink-0" : "flex-1 min-h-0"
+      }`}
+    >
+      {/* 1. Header + Magic Wand Auto-Rig + Shade/Hide Controls */}
+      <div className="p-3 border-b border-white/12 flex items-center justify-between gap-2 shrink-0">
+        <div className="min-w-0">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 flex items-center gap-1">
+            <span>🪄 Magic Wand Auto-Rig (A)</span>
           </span>
-          <h2 className="text-sm font-bold text-white">
+          <h2 className="text-xs font-bold text-white truncate">
             Visual Physics & 14 Game Actions
           </h2>
         </div>
-        <button
-          onClick={() => void onShipToUnity()}
-          className="whitespace-nowrap shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.45)] hover:brightness-110 transition"
-        >
-          Ship Ready Bundle
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={runOneClickAutoRig}
+            title="Run 1-Click Magic Wand Auto-Rig & Physics Inference"
+            className="whitespace-nowrap px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-gradient-to-b from-cyan-300 to-sky-500 text-slate-950 shadow hover:brightness-110 transition"
+          >
+            🪄 Auto-Rig
+          </button>
+          <button
+            onClick={() => void onShipToUnity()}
+            title="Build & Open Export Unity Pane"
+            className="whitespace-nowrap px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 shadow hover:brightness-110 transition"
+          >
+            Ship
+          </button>
+          <button
+            onClick={() => setIsShaded(!isShaded)}
+            title={isShaded ? "Expand Panel Body" : "Shade / Collapse Panel Body"}
+            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 flex items-center justify-center"
+          >
+            {isShaded ? "▾" : "–"}
+          </button>
+          {onHidePane && (
+            <button
+              onClick={onHidePane}
+              title="Hide Panel to Tool Rail"
+              className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-300 hover:text-white flex items-center justify-center"
+            >
+              «
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3.5 text-xs">
+      {!isShaded && (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3.5 text-xs">
         {/* 2. Visual Physics Inference Card ("Learned by Looking at Object") */}
         <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
           <div className="flex items-center justify-between">
@@ -464,7 +505,8 @@ export function AutoModeDock({ onShipToUnity }: { onShipToUnity: () => Promise<v
             );
           })}
         </div>
-      </div>
+        </div>
+      )}
     </aside>
   );
 }

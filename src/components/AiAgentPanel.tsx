@@ -48,7 +48,15 @@ const QUICK_PROMPTS: { label: string; prompt: string }[] = [
   },
 ];
 
-export function AiAgentPanel({ onTriggerExport }: { onTriggerExport: () => Promise<void> }) {
+export function AiAgentPanel({
+  onTriggerExport,
+  onHidePane,
+  widthClass = "w-80",
+}: {
+  onTriggerExport: () => Promise<void>;
+  onHidePane?: () => void;
+  widthClass?: string;
+}) {
   const {
     project,
     setMode,
@@ -73,6 +81,7 @@ export function AiAgentPanel({ onTriggerExport }: { onTriggerExport: () => Promi
   const [apiKey, setApiKey] = useState("");
   const [showKeyConfig, setShowKeyConfig] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isShaded, setIsShaded] = useState(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -232,27 +241,49 @@ export function AiAgentPanel({ onTriggerExport }: { onTriggerExport: () => Promi
   const activeProviderMeta = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0]!;
 
   return (
-    <aside className="pointer-events-auto w-84 rounded-[26px] liquid-glass flex flex-col overflow-hidden shrink-0">
+    <aside
+      className={`pointer-events-auto ${widthClass} rounded-[26px] liquid-glass flex flex-col overflow-hidden transition-all ${
+        isShaded ? "shrink-0" : "flex-1 min-h-0"
+      }`}
+    >
       {/* 1. AI Copilot Header & 4-Provider Switcher (Cursor, Claude, ChatGPT, Grok) */}
       <div className="p-3 border-b border-white/12 space-y-2.5 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
             <span
-              className="h-2.5 w-2.5 rounded-full shadow-[0_0_10px_currentColor]"
+              className="h-2.5 w-2.5 rounded-full shadow-[0_0_10px_currentColor] shrink-0"
               style={{ backgroundColor: activeProviderMeta.accent, color: activeProviderMeta.accent }}
             />
-            <span className="text-xs font-bold tracking-tight text-white">AI Rigging Copilot</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full liquid-glass-well font-mono text-sky-300">
+            <span className="text-xs font-bold tracking-tight text-white truncate">AI Copilot</span>
+            <span className="text-[9.5px] px-2 py-0.5 rounded-full liquid-glass-well font-mono text-sky-300 shrink-0">
               {activeProviderMeta.modelBadge}
             </span>
           </div>
-          <button
-            onClick={() => setShowKeyConfig(!showKeyConfig)}
-            title="Configure API Keys / MCP Endpoint"
-            className="px-2 py-0.5 rounded-full liquid-glass-button text-[10px] font-medium text-slate-300 hover:text-white"
-          >
-            {showKeyConfig ? "Hide Key" : "API / MCP"}
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => setShowKeyConfig(!showKeyConfig)}
+              title="Configure API Keys / MCP Endpoint"
+              className="px-2 py-0.5 rounded-full liquid-glass-button text-[10px] font-medium text-slate-300 hover:text-white"
+            >
+              {showKeyConfig ? "Hide Key" : "API"}
+            </button>
+            <button
+              onClick={() => setIsShaded(!isShaded)}
+              title={isShaded ? "Expand Copilot Body" : "Shade / Collapse Copilot Body"}
+              className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 flex items-center justify-center"
+            >
+              {isShaded ? "▾" : "–"}
+            </button>
+            {onHidePane && (
+              <button
+                onClick={onHidePane}
+                title="Hide AI Copilot to Tool Rail"
+                className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-300 hover:text-white flex items-center justify-center"
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 4-Way Provider Pill Selector */}
@@ -295,79 +326,83 @@ export function AiAgentPanel({ onTriggerExport }: { onTriggerExport: () => Promi
       </div>
 
       {/* 2. Quick Action Chips for 1-Click AI Execution */}
-      <div className="px-3 py-2 border-b border-white/8 flex items-center gap-1.5 overflow-x-auto shrink-0">
-        {QUICK_PROMPTS.map((chip, idx) => (
-          <button
-            key={idx}
-            onClick={() => void sendPrompt(chip.prompt)}
-            className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[10px] font-medium text-sky-200 hover:text-white"
-          >
-            {chip.label}
-          </button>
-        ))}
-      </div>
-
-      {/* 3. Live Agent Chat & Tool Execution Stream */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`p-3 rounded-2xl space-y-2 ${
-              msg.role === "user"
-                ? "bg-sky-500/20 border border-sky-400/35 text-white ml-4"
-                : "liquid-glass-well text-slate-200 mr-2"
-            }`}
-          >
-            <div className="flex items-center justify-between text-[10px] text-slate-400">
-              <span className="font-bold uppercase tracking-wider text-sky-300">
-                {msg.role === "user" ? "You" : `${msg.provider.toUpperCase()} Agent`}
-              </span>
-              <span>{msg.timestamp}</span>
-            </div>
-
-            <p className="leading-relaxed text-[11.5px] whitespace-pre-wrap">{msg.text}</p>
-
-            {/* Executed Tool Calls Cards */}
-            {msg.actions && msg.actions.length > 0 && (
-              <div className="space-y-1 pt-1">
-                {msg.actions.map((act, i) => (
-                  <div
-                    key={i}
-                    className="px-2.5 py-1.5 rounded-xl bg-emerald-500/12 border border-emerald-400/25 text-[10.5px] font-mono text-emerald-200 flex items-center gap-2"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
-                    <span className="truncate">{act.summary}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+      {!isShaded && (
+        <>
+          <div className="px-3 py-2 border-b border-white/8 flex items-center gap-1.5 overflow-x-auto shrink-0">
+            {QUICK_PROMPTS.map((chip, idx) => (
+              <button
+                key={idx}
+                onClick={() => void sendPrompt(chip.prompt)}
+                className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[10px] font-medium text-sky-200 hover:text-white"
+              >
+                {chip.label}
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* 4. Prompt Input Composer */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void sendPrompt(prompt);
-        }}
-        className="p-3 border-t border-white/10 flex items-center gap-2 shrink-0"
-      >
-        <input
-          type="text"
-          placeholder={`Ask ${activeProviderMeta.name} to rig, mesh, weight, or export...`}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          className="flex-1 min-w-0 liquid-glass-well rounded-full px-3.5 py-2 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-sky-400"
-        />
-        <button
-          type="submit"
-          disabled={isRunning || !prompt.trim()}
-          className="whitespace-nowrap shrink-0 px-3.5 py-2 rounded-full liquid-glass-active text-xs font-bold disabled:opacity-40"
-        >
-          {isRunning ? "..." : "Run"}
-        </button>
-      </form>
+          {/* 3. Live Agent Chat & Tool Execution Stream */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`p-3 rounded-2xl space-y-2 ${
+                  msg.role === "user"
+                    ? "bg-sky-500/20 border border-sky-400/35 text-white ml-4"
+                    : "liquid-glass-well text-slate-200 mr-2"
+                }`}
+              >
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span className="font-bold uppercase tracking-wider text-sky-300">
+                    {msg.role === "user" ? "You" : `${msg.provider.toUpperCase()} Agent`}
+                  </span>
+                  <span>{msg.timestamp}</span>
+                </div>
+
+                <p className="leading-relaxed text-[11.5px] whitespace-pre-wrap">{msg.text}</p>
+
+                {/* Executed Tool Calls Cards */}
+                {msg.actions && msg.actions.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    {msg.actions.map((act, i) => (
+                      <div
+                        key={i}
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-500/12 border border-emerald-400/25 text-[10.5px] font-mono text-emerald-200 flex items-center gap-2"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
+                        <span className="truncate">{act.summary}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* 4. Prompt Input Composer */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void sendPrompt(prompt);
+            }}
+            className="p-3 border-t border-white/10 flex items-center gap-2 shrink-0"
+          >
+            <input
+              type="text"
+              placeholder={`Ask ${activeProviderMeta.name} to rig, mesh, weight, or export...`}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              className="flex-1 min-w-0 liquid-glass-well rounded-full px-3.5 py-2 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-sky-400"
+            />
+            <button
+              type="submit"
+              disabled={isRunning || !prompt.trim()}
+              className="whitespace-nowrap shrink-0 px-3.5 py-2 rounded-full liquid-glass-active text-xs font-bold disabled:opacity-40"
+            >
+              {isRunning ? "..." : "Run"}
+            </button>
+          </form>
+        </>
+      )}
     </aside>
   );
 }

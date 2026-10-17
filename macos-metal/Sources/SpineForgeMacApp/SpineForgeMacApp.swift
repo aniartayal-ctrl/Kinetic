@@ -108,6 +108,7 @@ public final class MacStudioViewModel: ObservableObject {
 
     @Published public var outlinerTab: OutlinerTab = .layers
     @Published public var dopeSheetExpanded: Bool = false
+    @Published public var leftPaneOpen: Bool = true
     @Published public var showAiCopilot: Bool = true
     @Published public var showUserManualSheet: Bool = false
     @Published public var aiProvider: AiProvider = .cursor
@@ -738,7 +739,10 @@ public struct SpineForgeMainStudioView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(vm.mode == .mesh ? .cyan : .gray.opacity(0.3))
 
-                        Button(action: { vm.mode = .weights }) {
+                        Button(action: {
+                            if vm.mode == .weights && vm.leftPaneOpen { vm.leftPaneOpen = false }
+                            else { vm.mode = .weights; vm.leftPaneOpen = true }
+                        }) {
                             VStack(spacing: 1) {
                                 Image(systemName: "paintbrush.pointed.fill")
                                 Text("B").font(.system(size: 9, weight: .bold))
@@ -746,7 +750,33 @@ public struct SpineForgeMainStudioView: View {
                             .frame(width: 40, height: 38)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(vm.mode == .weights ? .cyan : .gray.opacity(0.3))
+                        .tint(vm.mode == .weights && vm.leftPaneOpen ? .cyan : .gray.opacity(0.3))
+
+                        Button(action: {
+                            vm.bakeAndExportOnMetal(revealInFinder: false)
+                            if vm.mode == .export && vm.leftPaneOpen { vm.leftPaneOpen = false }
+                            else { vm.mode = .export; vm.leftPaneOpen = true }
+                        }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "cube.box.fill")
+                                Text("Unity").font(.system(size: 8.5, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(vm.mode == .export ? .green : .green.opacity(0.35))
+
+                        Button(action: {
+                            vm.showAiCopilot.toggle()
+                        }) {
+                            VStack(spacing: 1) {
+                                Image(systemName: "sparkles")
+                                Text("Copilot").font(.system(size: 8, weight: .bold))
+                            }
+                            .frame(width: 40, height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(vm.showAiCopilot ? .purple : .gray.opacity(0.3))
 
                         Divider().frame(width: 28)
 
@@ -767,15 +797,20 @@ public struct SpineForgeMainStudioView: View {
                     .padding(.horizontal, 8)
                     .liquidGlass(cornerRadius: 24)
 
-                    // 2. Left Contextual Photoshop Tool Options Pane (Changes dynamically per selected tool)
+                    // 2. Left Contextual Photoshop Tool Options Pane (Hideable & Stackable)
+                    if vm.leftPaneOpen {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text(vm.mode.rawValue.uppercased())
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.cyan)
                             Spacer()
-                            Button("⚡ Auto-Rig") {
+                            Button("🪄 Auto-Rig") {
                                 vm.runAppleVisionAutoRig()
+                            }
+                            .controlSize(.mini)
+                            Button("«") {
+                                vm.leftPaneOpen = false
                             }
                             .controlSize(.mini)
                         }
@@ -890,6 +925,7 @@ public struct SpineForgeMainStudioView: View {
                     .padding(12)
                     .frame(width: 260)
                     .liquidGlass(cornerRadius: 26)
+                    }
 
                     Spacer()
 

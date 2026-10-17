@@ -26,10 +26,31 @@ const BEZIER_PRESETS: { id: string; label: string; curve: CurveType; svgPath: st
   { id: "stepped", label: "Stepped", curve: "stepped", svgPath: "M 4 28 L 24 28 L 24 4 L 40 4" },
 ];
 
+export type ExportBundlePreviewData = {
+  id: string;
+  atlasDataUrl: string;
+  spriteSheetDataUrl: string;
+  spineJson: string;
+  spineAtlasTxt: string;
+  unitySfRigJson: string;
+  spriteSheetJson: string;
+  zipBase64: string;
+};
+
 export function LeftToolOptionsPane({
   onShipToUnity,
+  onHidePane,
+  exportData,
+  isExporting,
+  onDownloadZip,
+  onExportWebM,
 }: {
   onShipToUnity: () => Promise<void>;
+  onHidePane?: () => void;
+  exportData?: ExportBundlePreviewData | null;
+  isExporting?: boolean;
+  onDownloadZip?: () => void;
+  onExportWebM?: () => void;
 }) {
   const {
     project,
@@ -88,13 +109,11 @@ export function LeftToolOptionsPane({
   const [weightAlgo, setWeightAlgo] = useState<AutoWeightMode>("hybrid");
   const [newBoneName, setNewBoneName] = useState<string>("");
   const [activeCurveId, setActiveCurveId] = useState<string>("sine");
+  const [isShaded, setIsShaded] = useState<boolean>(false);
+  const [exportTab, setExportTab] = useState<"unity" | "spine" | "sheet">("unity");
 
   if (mode === "auto") {
-    return <AutoModeDock onShipToUnity={onShipToUnity} />;
-  }
-
-  if (mode === "export") {
-    return null;
+    return <AutoModeDock onShipToUnity={onShipToUnity} onHidePane={onHidePane} />;
   }
 
   const currentBoneObj = project.bones.find((b) => b.name === selectedBone) ?? project.bones[0]!;
@@ -139,11 +158,15 @@ export function LeftToolOptionsPane({
   };
 
   return (
-    <aside className="pointer-events-auto w-84 rounded-[26px] liquid-glass flex flex-col overflow-hidden shrink-0">
-      {/* 1. PANE HEADER: Shows active Photoshop Tool & Quick Action */}
-      <div className="p-3.5 border-b border-white/12 flex items-center justify-between gap-2 shrink-0">
-        <div>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-sky-300 block">
+    <aside
+      className={`pointer-events-auto w-84 rounded-[26px] liquid-glass flex flex-col overflow-hidden transition-all ${
+        isShaded ? "shrink-0" : "flex-1 min-h-0"
+      }`}
+    >
+      {/* 1. PANE HEADER: Shows active Photoshop Tool + Shade (_) + Hide («) Controls */}
+      <div className="p-3 border-b border-white/12 flex items-center justify-between gap-2 shrink-0">
+        <div className="min-w-0">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-sky-300 block truncate">
             {mode === "import"
               ? "Import PSD & Document Setup"
               : mode === "animate"
@@ -154,10 +177,12 @@ export function LeftToolOptionsPane({
                     ? "Puppet Warp Mesh Tool (M)"
                     : mode === "weights"
                       ? "GPU Weight Paint Brush (B)"
-                      : "Liquify FFD Sculpt Tool (W)"}
+                      : mode === "liquify"
+                        ? "Liquify FFD Sculpt Tool (W)"
+                        : "Unity & Spine 4.2 Export (E)"}
           </span>
-          <h2 className="text-sm font-bold text-white mt-0.5 truncate">
-            {mode === "import"
+          <h2 className="text-xs font-bold text-white mt-0.5 truncate">
+            {mode === "import" || mode === "export"
               ? project.title
               : mode === "mesh" || mode === "weights" || mode === "liquify"
                 ? `Active Layer: ${currentPartObj.name}`
@@ -165,20 +190,39 @@ export function LeftToolOptionsPane({
           </h2>
         </div>
 
-        <button
-          onClick={() => {
-            runOneClickAutoRig();
-            setMode("auto");
-          }}
-          title="Switch to 1-Click Auto Studio (A)"
-          className="whitespace-nowrap shrink-0 px-3 py-1 rounded-full text-[10.5px] font-bold liquid-glass-button text-cyan-200 hover:text-white"
-        >
-          ⚡ Auto Studio
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => {
+              runOneClickAutoRig();
+              setMode("auto");
+            }}
+            title="Switch to 1-Click Magic Wand Auto-Rig (A)"
+            className="whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold liquid-glass-button text-cyan-200 hover:text-white"
+          >
+            🪄 Auto-Rig
+          </button>
+          <button
+            onClick={() => setIsShaded(!isShaded)}
+            title={isShaded ? "Expand Panel Body" : "Shade / Collapse Panel Body"}
+            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 flex items-center justify-center"
+          >
+            {isShaded ? "▾" : "–"}
+          </button>
+          {onHidePane && (
+            <button
+              onClick={onHidePane}
+              title="Hide Panel to Tool Rail"
+              className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-300 hover:text-white flex items-center justify-center"
+            >
+              «
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 2. CONTEXTUAL TOOL OPTIONS BODY */}
-      <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 text-xs">
+      {!isShaded && (
+        <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 text-xs">
         {/* =====================================================================
             MODE 0: IMPORT PSD & DOCUMENT SETUP PANE (Top Icon Above Auto)
            ===================================================================== */}
@@ -1039,7 +1083,99 @@ export function LeftToolOptionsPane({
             </div>
           </>
         )}
-      </div>
+
+        {/* =====================================================================
+            MODE 6: EXPORT UNITY & SPINE 4.2 DOCK PANE (E)
+           ===================================================================== */}
+        {mode === "export" && (
+          <>
+            <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-emerald-300">
+                  3-Way Unity & Spine 4.2 Exporter
+                </span>
+                <span className="text-[10px] font-mono text-sky-300">
+                  {Object.keys(project.animations).length} Clips
+                </span>
+              </div>
+
+              <button
+                onClick={() => void onShipToUnity()}
+                disabled={isExporting}
+                className="w-full py-2 rounded-full text-xs font-bold bg-gradient-to-b from-emerald-300 to-emerald-500 text-slate-950 shadow-[0_0_16px_rgba(52,211,153,0.45)] hover:brightness-110 transition disabled:opacity-50"
+              >
+                {isExporting ? "Baking GPU Atlas & Sheets..." : "⚡ Build / Refresh Unity Bundle"}
+              </button>
+
+              {exportData && (
+                <div className="grid grid-cols-2 gap-1.5 pt-1">
+                  <button
+                    onClick={onDownloadZip}
+                    className="py-1.5 px-2.5 rounded-full liquid-glass-active text-[11px] font-bold"
+                  >
+                    ⬇ Download .ZIP
+                  </button>
+                  <button
+                    onClick={onExportWebM}
+                    className="py-1.5 px-2.5 rounded-full liquid-glass-button text-amber-200 text-[11px] font-bold"
+                  >
+                    🎥 Export .WebM
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {exportData && (
+              <>
+                <div className="grid grid-cols-3 gap-1 p-1 rounded-full bg-black/30">
+                  {(
+                    [
+                      { id: "unity", label: "Unity .sfrig" },
+                      { id: "spine", label: "Spine 4.2" },
+                      { id: "sheet", label: "Flipbook" },
+                    ] as const
+                  ).map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setExportTab(t.id)}
+                      className={`py-1 rounded-full text-[10.5px] font-bold transition ${
+                        exportTab === t.id ? "liquid-glass-active" : "text-slate-300 hover:text-white"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="p-3 rounded-2xl liquid-glass-well flex flex-col items-center gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={exportTab === "sheet" ? exportData.spriteSheetDataUrl : exportData.atlasDataUrl}
+                    alt="Exported Atlas"
+                    className="max-h-44 object-contain rounded-xl border border-white/10"
+                  />
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {exportTab === "sheet"
+                      ? `${project.id}-sheet.png (296 frames)`
+                      : `${project.id}.png (MaxRects Atlas)`}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-2xl liquid-glass-well">
+                  <pre className="max-h-44 overflow-auto text-[10px] font-mono text-cyan-200">
+                    {exportTab === "unity"
+                      ? exportData.unitySfRigJson.slice(0, 2400)
+                      : exportTab === "spine"
+                        ? `// ${project.id}.atlas.txt\n${exportData.spineAtlasTxt}\n// ${project.id}.json\n${exportData.spineJson.slice(0, 1800)}`
+                        : exportData.spriteSheetJson.slice(0, 2400)}
+                  </pre>
+                </div>
+              </>
+            )}
+          </>
+        )}
+        </div>
+      )}
     </aside>
   );
 }
