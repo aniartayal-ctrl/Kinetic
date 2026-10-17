@@ -160,6 +160,8 @@ public final class MacStudioViewModel: ObservableObject {
     @Published public var gpuDeviceName: String = "Apple Metal GPU"
     @Published public var gpuUnifiedMemory: Bool = true
     @Published public var statusMessage: String = "120Hz ProMotion Apple Metal Pipeline Active"
+    @Published public var history: [SfProject] = []
+    @Published public var historyIndex: Int = 0
 
     public var renderer: MetalRigRenderer?
     public let workspaceRootURL: URL
@@ -183,6 +185,8 @@ public final class MacStudioViewModel: ObservableObject {
 
         let initialProj = Self.loadProjectFile(id: "astral-forge", rootURL: rootURL, publicRootURL: publicRootURL)
         self.project = initialProj
+        self.history = [initialProj]
+        self.historyIndex = 0
 
         do {
             let r = try MetalRigRenderer(project: initialProj, publicRootURL: publicRootURL)
@@ -230,6 +234,8 @@ public final class MacStudioViewModel: ObservableObject {
 
     public func applyLoadedProject(_ next: SfProject) {
         self.project = next
+        self.history = [next]
+        self.historyIndex = 0
         self.selectedBone = next.bones.dropFirst().first?.name ?? next.bones.first?.name ?? "root"
         self.selectedPart = next.parts.first(where: { ($0.skin?.count ?? 0) > 1 })?.name ?? next.parts.first?.name ?? ""
         self.activeClip = next.animations["strike"] != nil ? "strike" : (next.animations.keys.sorted().first ?? "idle")
@@ -237,6 +243,30 @@ public final class MacStudioViewModel: ObservableObject {
         try? renderer?.loadProject(next, publicRoot: publicRootURL)
         syncHeatmaps()
         statusMessage = "Loaded '\(next.title)' (\(next.bones.count) bones, \(next.parts.count) layers) on \(gpuDeviceName)"
+    }
+
+    public func pushHistorySnapshot() {
+        let sliced = Array(history.prefix(historyIndex + 1)).suffix(24)
+        history = Array(sliced) + [project]
+        historyIndex = history.count - 1
+    }
+
+    public func undo() {
+        guard historyIndex > 0 else { return }
+        historyIndex -= 1
+        project = history[historyIndex]
+        renderer?.solver.project = project
+        renderer?.solver.rebuildHierarchy()
+        statusMessage = "Undo (\(historyIndex + 1)/\(history.count))"
+    }
+
+    public func redo() {
+        guard historyIndex < history.count - 1 else { return }
+        historyIndex += 1
+        project = history[historyIndex]
+        renderer?.solver.project = project
+        renderer?.solver.rebuildHierarchy()
+        statusMessage = "Redo (\(historyIndex + 1)/\(history.count))"
     }
 
     public func syncHeatmaps() {
@@ -780,6 +810,26 @@ public struct SpineForgeMainStudioView: View {
 
                         Divider().frame(width: 28)
 
+                        HStack(spacing: 3) {
+                            Button(action: { vm.undo() }) {
+                                Text("↶")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .disabled(vm.historyIndex <= 0)
+                            .controlSize(.mini)
+                            .help("Undo (⌘Z)")
+
+                            Button(action: { vm.redo() }) {
+                                Text("↷")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .disabled(vm.historyIndex >= vm.history.count - 1)
+                            .controlSize(.mini)
+                            .help("Redo (⇧⌘Z)")
+                        }
+
+                        Divider().frame(width: 28)
+
                         Toggle("Bones", isOn: $vm.showBones)
                             .toggleStyle(.button)
                             .controlSize(.mini)
@@ -805,8 +855,15 @@ public struct SpineForgeMainStudioView: View {
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.cyan)
                             Spacer()
-                            Button("🪄 Auto-Rig") {
+                            Button("↶") { vm.undo() }
+                                .disabled(vm.historyIndex <= 0)
+                                .controlSize(.mini)
+                            Button("↷") { vm.redo() }
+                                .disabled(vm.historyIndex >= vm.history.count - 1)
+                                .controlSize(.mini)
+                            Button("🪄 Auto") {
                                 vm.runAppleVisionAutoRig()
+                                vm.pushHistorySnapshot()
                             }
                             .controlSize(.mini)
                             Button("«") {

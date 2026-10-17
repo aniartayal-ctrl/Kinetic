@@ -61,6 +61,10 @@ export function AutoModeDock({
     setMobileProfileScale,
     setSlotStageMode,
     setSlotOrientation,
+    undo,
+    redo,
+    history,
+    historyIndex,
   } = useStudioStore();
 
   const [isShaded, setIsShaded] = useState(false);
@@ -93,11 +97,27 @@ export function AutoModeDock({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
+            onClick={undo}
+            disabled={historyIndex <= 0}
+            title="Undo (⌘Z)"
+            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35 flex items-center justify-center"
+          >
+            ↶
+          </button>
+          <button
+            onClick={redo}
+            disabled={historyIndex >= history.length - 1}
+            title="Redo (⇧⌘Z)"
+            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35 flex items-center justify-center"
+          >
+            ↷
+          </button>
+          <button
             onClick={runOneClickAutoRig}
             title="Run 1-Click Magic Wand Auto-Rig & Physics Inference"
-            className="whitespace-nowrap px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-gradient-to-b from-cyan-300 to-sky-500 text-slate-950 shadow hover:brightness-110 transition"
+            className="whitespace-nowrap px-2 py-1 rounded-full text-[10px] font-bold bg-gradient-to-b from-cyan-300 to-sky-500 text-slate-950 shadow hover:brightness-110 transition"
           >
-            🪄 Auto-Rig
+            🪄 Rig
           </button>
           <button
             onClick={() => void onShipToUnity()}

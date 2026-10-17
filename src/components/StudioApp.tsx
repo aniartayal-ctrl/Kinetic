@@ -429,6 +429,30 @@ export function StudioApp() {
                   <ToolRailIcon id="layers" />
                   <span className="text-[7.5px] font-semibold tracking-tight leading-none">Layers</span>
                 </button>
+
+                <div className="w-8 h-px bg-white/15 my-0.5" />
+
+                {/* Undo (⌘Z) & Redo (⇧⌘Z) directly on the Left Tool Rail */}
+                <div className="grid grid-cols-2 gap-1 w-11">
+                  <button
+                    onClick={undo}
+                    disabled={historyIndex <= 0}
+                    title="Undo (⌘Z)"
+                    className="h-8 rounded-xl liquid-glass-button text-xs font-bold text-slate-200 hover:text-white disabled:opacity-35 flex flex-col items-center justify-center leading-none"
+                  >
+                    <span>↶</span>
+                    <span className="text-[6.5px] font-semibold opacity-75">Undo</span>
+                  </button>
+                  <button
+                    onClick={redo}
+                    disabled={historyIndex >= history.length - 1}
+                    title="Redo (⇧⌘Z)"
+                    className="h-8 rounded-xl liquid-glass-button text-xs font-bold text-slate-200 hover:text-white disabled:opacity-35 flex flex-col items-center justify-center leading-none"
+                  >
+                    <span>↷</span>
+                    <span className="text-[6.5px] font-semibold opacity-75">Redo</span>
+                  </button>
+                </div>
               </div>
 
               <div className="w-8 h-px bg-white/15 my-0.5" />

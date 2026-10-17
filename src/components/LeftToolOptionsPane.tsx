@@ -97,6 +97,10 @@ export function LeftToolOptionsPane({
     applyVoiceLipSync,
     setBoneKeyframeAtCurrentTime,
     setBoneCurveAtCurrentTime,
+    undo,
+    redo,
+    history,
+    historyIndex,
   } = useStudioStore();
 
   // State for Import PSD / Smart Part Knife
@@ -192,6 +196,22 @@ export function LeftToolOptionsPane({
 
         <div className="flex items-center gap-1 shrink-0">
           <button
+            onClick={undo}
+            disabled={historyIndex <= 0}
+            title="Undo (⌘Z)"
+            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35 flex items-center justify-center"
+          >
+            ↶
+          </button>
+          <button
+            onClick={redo}
+            disabled={historyIndex >= history.length - 1}
+            title="Redo (⇧⌘Z)"
+            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35 flex items-center justify-center"
+          >
+            ↷
+          </button>
+          <button
             onClick={() => {
               runOneClickAutoRig();
               setMode("auto");
@@ -199,7 +219,7 @@ export function LeftToolOptionsPane({
             title="Switch to 1-Click Magic Wand Auto-Rig (A)"
             className="whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold liquid-glass-button text-cyan-200 hover:text-white"
           >
-            🪄 Auto-Rig
+            🪄 Auto
           </button>
           <button
             onClick={() => setIsShaded(!isShaded)}
