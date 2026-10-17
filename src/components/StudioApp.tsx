@@ -260,6 +260,7 @@ export function StudioApp() {
 
   const [layersTab, setLayersTab] = useState<"layers" | "bones" | "history">("layers");
   const [dopeSheetExpanded, setDopeSheetExpanded] = useState(false);
+  const [timelineDock, setTimelineDock] = useState<"bottom" | "top">("bottom");
   const [eventType, setEventType] = useState("OnHit");
 
   const [newBoneName, setNewBoneName] = useState("");
@@ -421,8 +422,12 @@ export function StudioApp() {
       {/* 1. Full-Bleed 100% Spatial Canvas Stage */}
       <StudioViewport />
 
-      {/* 2. Photoshop Dockable, Stackable & Hideable Workspace */}
-      <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-3 gap-2.5">
+      {/* 2. Photoshop Dockable, Stackable & Hideable Workspace (Supports Stacking Timeline at Top or Bottom) */}
+      <div
+        className={`fixed inset-0 z-20 pointer-events-none flex justify-between p-3 gap-2.5 ${
+          timelineDock === "top" ? "flex-col-reverse" : "flex-col"
+        }`}
+      >
         <div className="flex-1 min-h-0 flex items-stretch justify-between gap-2.5">
           {/* LEFT DOCK: [1. Unified Photoshop Vertical Tool Rail] + [2. Hideable/Stackable Tool Options Pane] */}
           <div className="flex items-stretch gap-2.5 shrink-0">
@@ -1044,6 +1049,18 @@ export function StudioApp() {
               className="whitespace-nowrap shrink-0 px-3 py-1 rounded-full liquid-glass-button text-[11px] font-semibold text-sky-200"
             >
               {dopeSheetExpanded ? "Hide Dope Sheet" : "Dope Sheet"}
+            </button>
+
+            <button
+              onClick={() => setTimelineDock(timelineDock === "bottom" ? "top" : "bottom")}
+              title={
+                timelineDock === "bottom"
+                  ? "Stack Timeline Bar at Top of Screen"
+                  : "Stack Timeline Bar at Bottom of Screen"
+              }
+              className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[11px] font-bold text-cyan-200 hover:text-white"
+            >
+              {timelineDock === "bottom" ? "↑ Top" : "↓ Bottom"}
             </button>
           </div>
 

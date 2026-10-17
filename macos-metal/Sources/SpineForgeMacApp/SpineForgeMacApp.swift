@@ -108,6 +108,7 @@ public final class MacStudioViewModel: ObservableObject {
 
     @Published public var outlinerTab: OutlinerTab = .layers
     @Published public var dopeSheetExpanded: Bool = false
+    @Published public var timelineAtTop: Bool = false
     @Published public var leftPaneOpen: Bool = true
     @Published public var showAiCopilot: Bool = true
     @Published public var showUserManualSheet: Bool = false
@@ -712,8 +713,12 @@ public struct SpineForgeMainStudioView: View {
             MetalViewportRepresentable(viewModel: vm)
                 .ignoresSafeArea()
 
-            // 2. Non-Overlapping Spatial Workspace Columns (No Top Bar Obstructing Stage)
+            // 2. Non-Overlapping Spatial Workspace Columns (Supports Stacking Timeline at Top or Bottom)
             VStack(spacing: 10) {
+                if vm.timelineAtTop {
+                    timelineDockView
+                }
+
                 // MIDDLE WORKSPACE ROW:
                 // [Left Photoshop Tool Rail (Import PSD above Auto) + Contextual Tool Options Pane] | [Canvas] | [Right-Center Layers/Bones] | [Extreme-Right AI Copilot]
                 HStack(alignment: .top, spacing: 12) {
@@ -1283,105 +1288,10 @@ public struct SpineForgeMainStudioView: View {
                     }
                 }
 
-                // BOTTOM ROW: Photoshop Video Timeline & Keyframe Dope Sheet Dock
-                VStack(spacing: 8) {
-                    HStack(spacing: 12) {
-                        Button(action: { vm.isPlaying.toggle() }) {
-                            Text(vm.isPlaying ? "Pause" : "Play")
-                                .font(.system(size: 11, weight: .bold))
-                                .frame(width: 52)
-                        }
-                        .keyboardShortcut(.space, modifiers: [])
-                        .buttonStyle(.borderedProminent)
-                        .tint(vm.isPlaying ? .orange : .cyan)
-                        .controlSize(.small)
-
-                        Picker("", selection: $vm.activeClip) {
-                            ForEach(vm.project.animations.keys.sorted(), id: \.self) { clipName in
-                                Text(clipName.capitalized).tag(clipName)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 125)
-
-                        Slider(
-                            value: $vm.currentTime,
-                            in: 0...(max(0.1, vm.project.animations[vm.activeClip]?.duration ?? 2.4))
-                        )
-
-                        Text(String(format: "%.2fs / %.1fs", vm.currentTime, vm.project.animations[vm.activeClip]?.duration ?? 2.4))
-                            .font(.system(size: 11, design: .monospaced))
-                            .frame(width: 95, alignment: .trailing)
-
-                        Button(vm.dopeSheetExpanded ? "Hide Timeline" : "Timeline Tracks") {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                vm.dopeSheetExpanded.toggle()
-                            }
-                        }
-                        .controlSize(.small)
-
-                        Divider().frame(height: 16)
-
-                        Text(vm.statusMessage)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.cyan)
-                            .lineLimit(1)
-                            .frame(maxWidth: 270, alignment: .leading)
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 10)
-                    .padding(.bottom, vm.dopeSheetExpanded ? 4 : 10)
-
-                    if vm.dopeSheetExpanded {
-                        Divider().opacity(0.3)
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 5) {
-                                let clip = vm.project.animations[vm.activeClip]
-                                let dur = max(0.1, clip?.duration ?? 2.4)
-                                ForEach(vm.project.bones) { bone in
-                                    let keys = clip?.boneTracks[bone.name] ?? []
-                                    HStack(spacing: 10) {
-                                        Text(bone.name)
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .frame(width: 95, alignment: .leading)
-                                            .foregroundColor(bone.name == vm.selectedBone ? .cyan : .secondary)
-
-                                        GeometryReader { geo in
-                                            ZStack(alignment: .leading) {
-                                                Capsule()
-                                                    .fill(Color.black.opacity(0.35))
-                                                    .frame(height: 10)
-                                                Rectangle()
-                                                    .fill(Color.cyan.opacity(0.8))
-                                                    .frame(width: 2, height: 14)
-                                                    .offset(x: CGFloat(vm.currentTime / dur) * max(1, geo.size.width - 6))
-
-                                                ForEach(keys.indices, id: \.self) { kIdx in
-                                                    let kt = keys[kIdx].time
-                                                    Rectangle()
-                                                        .fill(Color.yellow)
-                                                        .frame(width: 7, height: 7)
-                                                        .rotationEffect(.degrees(45))
-                                                        .offset(x: CGFloat(kt / dur) * max(1, geo.size.width - 8))
-                                                        .onTapGesture {
-                                                            vm.isPlaying = false
-                                                            vm.currentTime = kt
-                                                            vm.selectedBone = bone.name
-                                                        }
-                                                }
-                                            }
-                                        }
-                                        .frame(height: 14)
-                                    }
-                                    .padding(.horizontal, 18)
-                                }
-                            }
-                            .padding(.bottom, 10)
-                        }
-                        .frame(height: 130)
-                    }
+                // BOTTOM ROW (When timelineAtTop == false)
+                if !vm.timelineAtTop {
+                    timelineDockView
                 }
-                .liquidGlass(cornerRadius: 28, isPill: !vm.dopeSheetExpanded)
             }
             .padding(14)
 
@@ -1473,6 +1383,115 @@ public struct SpineForgeMainStudioView: View {
         }
         .frame(minWidth: 1280, minHeight: 800)
         .preferredColorScheme(.dark)
+    }
+
+    private var timelineDockView: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Button(action: { vm.isPlaying.toggle() }) {
+                    Text(vm.isPlaying ? "Pause" : "Play")
+                        .font(.system(size: 11, weight: .bold))
+                        .frame(width: 52)
+                }
+                .keyboardShortcut(.space, modifiers: [])
+                .buttonStyle(.borderedProminent)
+                .tint(vm.isPlaying ? .orange : .cyan)
+                .controlSize(.small)
+
+                Picker("", selection: $vm.activeClip) {
+                    ForEach(vm.project.animations.keys.sorted(), id: \.self) { clipName in
+                        Text(clipName.capitalized).tag(clipName)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 125)
+
+                Slider(
+                    value: $vm.currentTime,
+                    in: 0...(max(0.1, vm.project.animations[vm.activeClip]?.duration ?? 2.4))
+                )
+
+                Text(String(format: "%.2fs / %.1fs", vm.currentTime, vm.project.animations[vm.activeClip]?.duration ?? 2.4))
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(width: 95, alignment: .trailing)
+
+                Button(vm.dopeSheetExpanded ? "Hide Dope Sheet" : "Dope Sheet") {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        vm.dopeSheetExpanded.toggle()
+                    }
+                }
+                .controlSize(.small)
+
+                Button(vm.timelineAtTop ? "↓ Bottom" : "↑ Top") {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        vm.timelineAtTop.toggle()
+                    }
+                }
+                .controlSize(.small)
+                .help("Stack Timeline Bar at Top or Bottom of Screen")
+
+                Divider().frame(height: 16)
+
+                Text(vm.statusMessage)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.cyan)
+                    .lineLimit(1)
+                    .frame(maxWidth: 240, alignment: .leading)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 10)
+            .padding(.bottom, vm.dopeSheetExpanded ? 4 : 10)
+
+            if vm.dopeSheetExpanded {
+                Divider().opacity(0.3)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 5) {
+                        let clip = vm.project.animations[vm.activeClip]
+                        let dur = max(0.1, clip?.duration ?? 2.4)
+                        ForEach(vm.project.bones) { bone in
+                            let keys = clip?.boneTracks[bone.name] ?? []
+                            HStack(spacing: 10) {
+                                Text(bone.name)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .frame(width: 95, alignment: .leading)
+                                    .foregroundColor(bone.name == vm.selectedBone ? .cyan : .secondary)
+
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        Capsule()
+                                            .fill(Color.black.opacity(0.35))
+                                            .frame(height: 10)
+                                        Rectangle()
+                                            .fill(Color.cyan.opacity(0.8))
+                                            .frame(width: 2, height: 14)
+                                            .offset(x: CGFloat(vm.currentTime / dur) * max(1, geo.size.width - 6))
+
+                                        ForEach(keys.indices, id: \.self) { kIdx in
+                                            let kt = keys[kIdx].time
+                                            Rectangle()
+                                                .fill(Color.yellow)
+                                                .frame(width: 7, height: 7)
+                                                .rotationEffect(.degrees(45))
+                                                .offset(x: CGFloat(kt / dur) * max(1, geo.size.width - 8))
+                                                .onTapGesture {
+                                                    vm.isPlaying = false
+                                                    vm.currentTime = kt
+                                                    vm.selectedBone = bone.name
+                                                }
+                                        }
+                                    }
+                                }
+                                .frame(height: 14)
+                            }
+                            .padding(.horizontal, 18)
+                        }
+                    }
+                    .padding(.bottom, 10)
+                }
+                .frame(height: 130)
+            }
+        }
+        .liquidGlass(cornerRadius: 28, isPill: !vm.dopeSheetExpanded)
     }
 }
 

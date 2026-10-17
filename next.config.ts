@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["sharp"],
-  devIndicators: { position: "bottom-right" },
+  devIndicators: false,
 };
 
 export default nextConfig;
