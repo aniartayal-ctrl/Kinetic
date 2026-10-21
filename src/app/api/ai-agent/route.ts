@@ -376,6 +376,94 @@ function runLocalAgentPlanner(
   };
 }
 
+/**
+ * Default cloud models. Override per machine with KINETIC_CLAUDE_MODEL, KINETIC_OPENAI_MODEL or
+ * KINETIC_XAI_MODEL (model ids change faster than this app ships), or per request with `model`.
+ */
+export const DEFAULT_MODELS = {
+  claude: process.env.KINETIC_CLAUDE_MODEL || "claude-sonnet-5-5",
+  chatgpt: process.env.KINETIC_OPENAI_MODEL || "gpt-5-mini",
+  grok: process.env.KINETIC_XAI_MODEL || "grok-4",
+} as const;
+
+type CloudPlan = { reply: string; actions: AgentToolAction[] };
+type CloudResult = { ok: true; plan: CloudPlan; model: string } | { ok: false; error: string; model: string };
+
+function describeProject(project: SpineForgeProject): string {
+  return `Project: ${project.id} (${project.width}x${project.height}), Bones: ${project.bones
+    .map((b) => b.name)
+    .join(",")}, Parts: ${project.parts.map((p) => p.name).join(",")}.`;
+}
+
+/** Pulls the first JSON object out of a model reply and checks it has the planner shape. */
+function parsePlan(text: string): CloudPlan | null {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]) as Partial<CloudPlan>;
+    if (typeof parsed.reply === "string" && Array.isArray(parsed.actions)) return parsed as CloudPlan;
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+async function readError(res: Response): Promise<string> {
+  try {
+    const data = (await res.json()) as { error?: { message?: string } | string };
+    const msg = typeof data.error === "string" ? data.error : data.error?.message;
+    return `${res.status} ${msg ?? res.statusText}`;
+  } catch {
+    return `${res.status} ${res.statusText}`;
+  }
+}
+
+async function callCloudModel(
+  provider: Exclude<AiProviderId, "cursor">,
+  key: string,
+  model: string,
+  prompt: string,
+  project: SpineForgeProject,
+): Promise<CloudResult> {
+  const user = `${describeProject(project)}\nReturn ONLY valid JSON for this request: ${prompt}`;
+  try {
+    if (provider === "claude") {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model, max_tokens: 2048, system: SYSTEM_PROMPT, messages: [{ role: "user", content: user }] }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!res.ok) return { ok: false, error: await readError(res), model };
+      const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+      const text = (data.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
+      const plan = parsePlan(text);
+      return plan ? { ok: true, plan, model } : { ok: false, error: "Model reply was not a valid action plan", model };
+    }
+
+    const endpoint = provider === "grok" ? "https://api.x.ai/v1/chat/completions" : "https://api.openai.com/v1/chat/completions";
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: user },
+        ],
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) return { ok: false, error: await readError(res), model };
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    const plan = parsePlan(data.choices?.[0]?.message?.content ?? "");
+    return plan ? { ok: true, plan, model } : { ok: false, error: "Model reply was not a valid action plan", model };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Network error", model };
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
@@ -385,96 +473,37 @@ export async function POST(request: Request) {
       prompt: string;
       project: SpineForgeProject;
     };
-
-    const { provider, apiKey, prompt, project } = body;
-
-    // Optional live OpenAI / Anthropic / xAI API call when user supplies an API key or env var
-    const openAiKey = apiKey || process.env.OPENAI_API_KEY;
-    const xaiKey = apiKey || process.env.XAI_API_KEY;
-    const anthropicKey = apiKey || process.env.ANTHROPIC_API_KEY;
-
-    if ((provider === "chatgpt" && openAiKey) || (provider === "grok" && xaiKey)) {
-      const endpoint =
-        provider === "grok"
-          ? "https://api.x.ai/v1/chat/completions"
-          : "https://api.openai.com/v1/chat/completions";
-      const key = provider === "grok" ? xaiKey : openAiKey;
-      const model = body.model || (provider === "grok" ? "grok-3-mini" : "gpt-4o-mini");
-
-      try {
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${key}`,
-          },
-          body: JSON.stringify({
-            model,
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: SYSTEM_PROMPT },
-              {
-                role: "user",
-                content: `Project: ${project.id} (${project.width}x${project.height}), Bones: ${project.bones.map((b) => b.name).join(",")}, Parts: ${project.parts.map((p) => p.name).join(",")}.\nUser Request: ${prompt}`,
-              },
-            ],
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const content = data.choices?.[0]?.message?.content;
-          if (content) {
-            const parsed = JSON.parse(content);
-            if (parsed.reply && Array.isArray(parsed.actions)) {
-              return NextResponse.json({ provider, mode: "cloud-llm", ...parsed });
-            }
-          }
-        }
-      } catch {
-        // Fall through to deterministic local tool planner
-      }
-    } else if (provider === "claude" && anthropicKey) {
-      try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": anthropicKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: body.model || "claude-3-5-sonnet-latest",
-            max_tokens: 1024,
-            system: SYSTEM_PROMPT,
-            messages: [
-              {
-                role: "user",
-                content: `Project: ${project.id}, Bones: ${project.bones.map((b) => b.name).join(",")}, Parts: ${project.parts.map((p) => p.name).join(",")}.\nReturn ONLY valid JSON for: ${prompt}`,
-              },
-            ],
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const text = data.content?.[0]?.text ?? "";
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed.reply && Array.isArray(parsed.actions)) {
-              return NextResponse.json({ provider, mode: "cloud-llm", ...parsed });
-            }
-          }
-        }
-      } catch {
-        // Fall through to deterministic local tool planner
-      }
+    const { provider, prompt, project } = body;
+    if (typeof prompt !== "string" || !project?.bones) {
+      return NextResponse.json({ error: "Missing prompt or project" }, { status: 400 });
     }
 
-    // Execute built-in Agentic Tool Planner
+    const envKey =
+      provider === "claude"
+        ? process.env.ANTHROPIC_API_KEY
+        : provider === "chatgpt"
+          ? process.env.OPENAI_API_KEY
+          : provider === "grok"
+            ? process.env.XAI_API_KEY
+            : undefined;
+    const key = body.apiKey?.trim() || envKey;
+
+    let cloudError: string | undefined;
+    if (provider !== "cursor" && key) {
+      const model = body.model?.trim() || DEFAULT_MODELS[provider];
+      const result = await callCloudModel(provider, key, model, prompt, project);
+      if (result.ok) {
+        return NextResponse.json({ provider, mode: "cloud-llm", model: result.model, ...result.plan });
+      }
+      // Surface the failure instead of silently pretending the cloud model answered.
+      cloudError = `${result.model}: ${result.error}`;
+    }
+
     const result = runLocalAgentPlanner(prompt, provider, project);
     return NextResponse.json({
       provider,
       mode: "agentic-tool-engine",
+      ...(cloudError ? { cloudError } : {}),
       ...result,
     });
   } catch (err) {

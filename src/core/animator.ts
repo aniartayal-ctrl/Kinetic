@@ -209,7 +209,6 @@ export class SpineForgeAnimator {
   readonly skin = new Float32Array(64 * 4);
   readonly world: Affine2D[];
   readonly springs: SpringState[];
-  private time = 0;
   private currentClipName: string;
 
   constructor(project: SpineForgeProject, initialClip = "idle") {
@@ -222,7 +221,6 @@ export class SpineForgeAnimator {
   setClip(name: string): void {
     if (this.currentClipName !== name) {
       this.currentClipName = name;
-      this.time = 0;
       for (const s of this.springs) {
         s.angle = 0;
         s.velocity = 0;
@@ -237,7 +235,6 @@ export class SpineForgeAnimator {
     const clip = project.animations[this.currentClipName];
     const duration = clip?.duration ?? 2.4;
     const t = clip?.loop ? ((timestamp % duration) + duration) % duration : Math.max(0, Math.min(duration, timestamp));
-    this.time = t;
 
     const fx = sampleFxTrack(clip?.fxTrack, t);
     const unit = project.height / 1000;

@@ -2,7 +2,6 @@
 
 import { create } from "zustand";
 import { bakeClipConstraintsToKeyframes, sampleDeformTrack } from "@/core/animator";
-import { autoRigProject } from "@/core/auto-rigger";
 import { buildSymbolRigProject, getThemeSymbols, type SlotSymbolRole } from "@/core/batch-symbols-and-slot-stage";
 import {
   applyVoiceLipSyncToClip,
@@ -48,7 +47,12 @@ export type HistorySnapshot = {
   id: string;
   label: string;
   timestamp: string;
-  projectJson: string;
+  /**
+   * The project at this point in history. Every store update builds a new object and copies only the
+   * branch it changes, so snapshots share untouched data (meshes, other clips) instead of
+   * serialising the whole project on every edit.
+   */
+  project: SpineForgeProject;
 };
 
 type OverlayToggleKey =
@@ -173,12 +177,15 @@ type StudioState = {
   bakeCurrentClipSprings: () => void;
 };
 
+/** Undo depth. Snapshots share structure, so 100 steps cost little memory. */
+const HISTORY_LIMIT = 100;
+
 function makeSnapshot(label: string, project: SpineForgeProject): HistorySnapshot {
   return {
     id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     label,
     timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-    projectJson: JSON.stringify(project),
+    project,
   };
 }
 
@@ -233,7 +240,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   pushHistory: (label, nextProject) => {
     const { history, historyIndex } = get();
     const sliced = history.slice(0, historyIndex + 1);
-    const nextHist = [...sliced.slice(-24), makeSnapshot(label, nextProject)];
+    const nextHist = [...sliced.slice(-(HISTORY_LIMIT - 1)), makeSnapshot(label, nextProject)];
     set({
       project: nextProject,
       history: nextHist,
@@ -248,7 +255,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const snap = history[prevIdx];
     if (!snap) return;
     set({
-      project: JSON.parse(snap.projectJson) as SpineForgeProject,
+      project: snap.project,
       historyIndex: prevIdx,
     });
   },
@@ -260,7 +267,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const snap = history[nextIdx];
     if (!snap) return;
     set({
-      project: JSON.parse(snap.projectJson) as SpineForgeProject,
+      project: snap.project,
       historyIndex: nextIdx,
     });
   },
@@ -270,7 +277,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const snap = history[index];
     if (!snap) return;
     set({
-      project: JSON.parse(snap.projectJson) as SpineForgeProject,
+      project: snap.project,
       historyIndex: index,
     });
   },
