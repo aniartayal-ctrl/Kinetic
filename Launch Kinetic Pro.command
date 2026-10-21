@@ -21,11 +21,11 @@ if command -v npm >/dev/null 2>&1; then
     npm install --no-audit --no-fund
   fi
   if ! lsof -ti :3460 >/dev/null 2>&1; then
-    echo "[OK] Starting WebGL2 Studio on http://localhost:3460 ..."
+    echo "[OK] Starting WebGL2 Studio on http://127.0.0.1:3460 ..."
     nohup npm run dev >/tmp/kinetic-web-studio.log 2>&1 &
     sleep 2
   fi
-  open "http://localhost:3460"
+  open "http://127.0.0.1:3460"
 fi
 
 echo "Done! Kinetic Pro is running."
