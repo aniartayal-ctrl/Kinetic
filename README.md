@@ -4,6 +4,8 @@
 
 📖 **[Read the Complete User Manual (`USER_MANUAL.md`)](./USER_MANUAL.md)**
 
+![Kinetic Pro — graph editor with bezier handles](./docs/screenshots/studio-graph-editor.webp)
+
 ![Kinetic Pro — studio with performance budget](./docs/screenshots/studio-budget.webp)
 
 ![Kinetic Pro — bones, copilot and keyframe sheet](./docs/screenshots/studio-rig-timeline.webp)
@@ -77,3 +79,15 @@ The copilot works offline with its built-in planner. To use a cloud model, paste
 | V | Pose | Tab | Hide all panels |
 | W | Warp | ⌘Z / ⇧⌘Z | Undo / redo (100 steps) |
 | E / ⌘E | Export | ⌘S | Save |
+| S / ⇧S | Key selected bone / all bones | , . | Previous / next key |
+| G | Graph editor | ⌘C / ⌘V | Copy / paste pose |
+| Delete | Delete selected key | ⌥-click key | Delete key |
+
+### Animation tools
+
+- **Graph editor (G)**: rotation, move and scale curves per bone with bezier handles, frame-snapped key dragging (⇧ locks an axis) and curve presets. One curve per key, shared by its channels.
+- **Dope sheet (K)**: drag keys to retime on whole frames, click to jump, ⌥-click or Delete to remove.
+- **Breakdown**: key every bone (⇧ selected bone) at any percentage between its neighbouring poses, including overshoot.
+- **Pose clipboard**: ⌘C copies the full pose at the playhead, ⌘V pastes it as one undo step.
+- **Clip timing**: length (optionally stretching keys and events), 24/30/60 fps, loop.
+- Every drag is one undo step. Unity export bakes each clip at its own frame rate (at least 30 Hz) so short, snappy timing survives.

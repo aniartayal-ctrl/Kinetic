@@ -2,6 +2,8 @@
 
 import { create } from "zustand";
 import { bakeClipConstraintsToKeyframes, sampleDeformTrack } from "@/core/animator";
+import { applyPose, breakdownKey, retimeClip, samplePose, upsertKey } from "@/core/keyframes";
+import type { BonePose } from "@/core/solver";
 import { buildSymbolRigProject, getThemeSymbols, type SlotSymbolRole } from "@/core/batch-symbols-and-slot-stage";
 import {
   applyVoiceLipSyncToClip,
@@ -20,6 +22,7 @@ import {
 import { BUILTIN_PRESETS } from "@/core/presets";
 import {
   RIG_BONE_PALETTE,
+  type AnimationClip,
   type CurveType,
   type RigBone,
   type RigPart,
@@ -171,6 +174,18 @@ type StudioState = {
   setBoneKeyframeAtCurrentTime: (boneName: string, patch: Partial<TransformKey>) => void;
   setBoneCurveAtCurrentTime: (boneName: string, curve: CurveType) => void;
   deleteBoneKeyframe: (boneName: string, time: number) => void;
+
+  // Animator tools (graph editor, dope sheet, breakdowns, pose clipboard, clip timing)
+  /** Applies `fn` to the active clip. With a label it is one undo step; with `null` it is a live preview (drags). */
+  editActiveClip: (fn: (clip: AnimationClip) => AnimationClip, label: string | null) => void;
+  /** Records the current project as one undo step after a series of preview edits. */
+  commitPreview: (label: string) => void;
+  poseClipboard: Record<string, BonePose> | null;
+  copyPose: () => void;
+  pastePose: () => void;
+  /** Keys every bone (or just `bones`) at the playhead, `fraction` of the way between neighbouring keys. */
+  insertBreakdown: (fraction: number, bones?: string[]) => void;
+  setClipTiming: (patch: { duration?: number; fps?: number; loop?: boolean; stretch?: boolean }) => void;
   addAnimationEventAtCurrentTime: (name: string, stringParam?: string, floatParam?: number) => void;
   deleteAnimationEvent: (time: number, name: string) => void;
   regenerateAllProceduralClips: () => void;
@@ -732,6 +747,73 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       },
     };
     state.pushHistory(`Set Curve on ${boneName}`, nextProject);
+  },
+
+  editActiveClip: (fn, label) => {
+    const state = get();
+    const clip = state.project.animations[state.activeClip];
+    if (!clip) return;
+    const nextClip = fn(clip);
+    if (nextClip === clip) return;
+    const nextProject = {
+      ...state.project,
+      animations: { ...state.project.animations, [state.activeClip]: nextClip },
+    };
+    if (label) state.pushHistory(label, nextProject);
+    else set({ project: nextProject });
+  },
+
+  commitPreview: (label) => {
+    const state = get();
+    if (state.history[state.historyIndex]?.project === state.project) return;
+    state.pushHistory(label, state.project);
+  },
+
+  poseClipboard: null,
+
+  copyPose: () => {
+    const state = get();
+    const clip = state.project.animations[state.activeClip];
+    if (!clip) return;
+    set({ poseClipboard: samplePose(clip, state.project.bones.map((b) => b.name), state.currentTime) });
+  },
+
+  pastePose: () => {
+    const state = get();
+    const pose = state.poseClipboard;
+    if (!pose) return;
+    const t = Number(state.currentTime.toFixed(4));
+    state.editActiveClip((clip) => ({ ...clip, boneTracks: applyPose(clip.boneTracks, pose, t) }), `Pasted Pose @ ${t.toFixed(2)}s`);
+  },
+
+  insertBreakdown: (fraction, bones) => {
+    const state = get();
+    const t = Number(state.currentTime.toFixed(4));
+    const names = bones ?? state.project.bones.map((b) => b.name);
+    state.editActiveClip((clip) => {
+      const boneTracks = { ...clip.boneTracks };
+      let changed = false;
+      for (const name of names) {
+        const key = breakdownKey(boneTracks[name] ?? [], t, fraction);
+        if (!key) continue;
+        boneTracks[name] = upsertKey(boneTracks[name] ?? [], key).track;
+        changed = true;
+      }
+      return changed ? { ...clip, boneTracks } : clip;
+    }, `Breakdown ${Math.round(fraction * 100)}% @ ${t.toFixed(2)}s`);
+  },
+
+  setClipTiming: ({ duration, fps, loop, stretch }) => {
+    const state = get();
+    state.editActiveClip((clip) => {
+      let next = clip;
+      if (duration !== undefined && Math.abs(duration - clip.duration) > 1e-4) next = retimeClip(next, duration, Boolean(stretch));
+      if (fps !== undefined && fps !== next.fps) next = { ...next, fps };
+      if (loop !== undefined && loop !== next.loop) next = { ...next, loop };
+      return next;
+    }, "Clip Timing");
+    const clip = get().project.animations[state.activeClip];
+    if (clip && get().currentTime > clip.duration) set({ currentTime: clip.duration });
   },
 
   deleteBoneKeyframe: (boneName, time) => {

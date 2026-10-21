@@ -197,7 +197,10 @@ export function UserManualModal({
                   { key: "V", name: "Pose", desc: "Drag any bone on the canvas to rotate and keyframe it. Drag IK handles to translate." },
                   { key: "W", name: "Warp", desc: "Push, inflate, pinch or restore mesh vertices per keyframe for squash and stretch." },
                   { key: "E / ⌘E", name: "Export", desc: "Build the Spine 4.2, Unity and sprite-sheet bundle." },
-                  { key: "Space  ← →", name: "Playback", desc: "Play or pause; arrow keys step one frame. K opens the keyframe sheet." },
+                  { key: "Space  ← →  , .", name: "Playback", desc: "Play or pause; arrows step one frame; comma and period jump to the previous or next key." },
+                  { key: "S  ⇧S", name: "Set Key", desc: "Key the selected bone at the playhead; with Shift, key every bone." },
+                  { key: "K  G", name: "Timeline", desc: "K opens the dope sheet (drag keys to retime, Delete removes). G opens the graph editor with bezier handles." },
+                  { key: "⌘C  ⌘V", name: "Pose Clipboard", desc: "Copy the whole pose at the playhead and paste it as keys anywhere. Breakdown keys in-betweens at any percentage." },
                   { key: "I  C  Tab", name: "Panels", desc: "I toggles the inspector, C the copilot, Tab hides every panel." },
                   { key: "⌘Z  ⌘S", name: "Undo and Save", desc: "Up to 100 undo steps in the History tab (⇧⌘Z to redo). ⌘S saves to disk." },
                 ].map((item) => (

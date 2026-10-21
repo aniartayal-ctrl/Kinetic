@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { keyPreservingShape } from "@/core/keyframes";
 import { RIG_BONE_PALETTE } from "@/core/schema";
 import { buildBrowserUnityExportBundle } from "@/exporters/browser-bundle-builder";
 import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
@@ -8,6 +9,7 @@ import { AiAgentPanel } from "./AiAgentPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { LeftToolOptionsPane, type ExportBundlePreviewData } from "./LeftToolOptionsPane";
 import { StudioViewport } from "./StudioViewport";
+import { TimelinePanel, type TimelineView } from "./TimelinePanel";
 import { UserManualModal } from "./UserManualModal";
 
 /* ── Icons (SF Symbols-style line icons, 1.75 stroke on a 24 grid) ─────────────────────────── */
@@ -281,6 +283,15 @@ function MenuRow({
   );
 }
 
+/** True only for fields that take typed text; sliders and checkboxes must not swallow shortcuts. */
+function isTextEntry(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  if (el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable) return true;
+  if (el.tagName !== "INPUT") return false;
+  return !["range", "checkbox", "radio", "button", "color"].includes((el as HTMLInputElement).type);
+}
+
 /* ── Studio shell ──────────────────────────────────────────────────────────────────────────── */
 
 export function StudioApp() {
@@ -316,10 +327,12 @@ export function StudioApp() {
     toggleBoneLock,
     togglePartVisibility,
     movePartLayerOrder,
-    deleteBoneKeyframe,
     addAnimationEventAtCurrentTime,
     deleteAnimationEvent,
     bakeCurrentClipSprings,
+    copyPose,
+    pastePose,
+    editActiveClip,
   } = store;
 
   // Layout state. Copilot starts closed: the canvas is the content, panels are opt-in.
@@ -328,6 +341,7 @@ export function StudioApp() {
   const [showAiCopilot, setShowAiCopilot] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"layers" | "bones" | "history" | "budget">("layers");
   const [dopeSheetExpanded, setDopeSheetExpanded] = useState(false);
+  const [timelineView, setTimelineView] = useState<TimelineView>("keys");
   const [eventType, setEventType] = useState("OnHit");
   const [newBoneName, setNewBoneName] = useState("");
   const [exportData, setExportData] = useState<ExportBundlePreviewData | null>(null);
@@ -412,14 +426,20 @@ export function StudioApp() {
         else undo();
         return;
       }
+      if (mod && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "v")) {
+        if (isTextEntry(e.target) || window.getSelection()?.toString()) return;
+        e.preventDefault();
+        if (e.key.toLowerCase() === "c") copyPose();
+        else pastePose();
+        return;
+      }
       if (mod && e.key.toLowerCase() === "e") {
         e.preventDefault();
         void handleRunExport();
         return;
       }
       if (mod || e.altKey) return;
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (isTextEntry(e.target)) return;
 
       const key = e.key.toLowerCase();
       const tool = TOOL_GROUPS.flat().find((t) => t.key.toLowerCase() === key);
@@ -427,9 +447,37 @@ export function StudioApp() {
         handleSelectTool(tool.id);
         return;
       }
-      if (key === "c") setShowAiCopilot((v) => !v);
+      if (key === "s") {
+        // Key the selected bone (⇧ every bone) at the playhead; eased segments are split so motion is unchanged.
+        const bones = e.shiftKey ? project.bones.map((b) => b.name) : selectedBone ? [selectedBone] : [];
+        const t = Number(currentTime.toFixed(4));
+        editActiveClip((c) => {
+          const boneTracks = { ...c.boneTracks };
+          for (const b of bones) {
+            boneTracks[b] = keyPreservingShape(boneTracks[b] ?? [], t);
+          }
+          return { ...c, boneTracks };
+        }, e.shiftKey ? `Keyed all bones @ ${t.toFixed(2)}s` : `Keyed ${selectedBone} @ ${t.toFixed(2)}s`);
+      } else if (e.code === "Comma" || e.code === "Period") {
+        // Jump to the previous / next key of the selected bone (⇧ any bone).
+        const bones = e.shiftKey ? project.bones.map((b) => b.name) : selectedBone ? [selectedBone] : [];
+        const times = [...new Set(bones.flatMap((b) => (currentClipObj?.boneTracks[b] ?? []).map((k) => k.time)))].sort((a, b) => a - b);
+        const target =
+          e.code === "Period" ? times.find((t) => t > currentTime + 1e-4) : [...times].reverse().find((t) => t < currentTime - 1e-4);
+        if (target !== undefined) {
+          setIsPlaying(false);
+          setCurrentTime(target);
+        }
+      } else if (key === "c") setShowAiCopilot((v) => !v);
       else if (key === "l" || key === "i") setInspectorOpen((v) => !v);
-      else if (key === "k") setDopeSheetExpanded((v) => !v);
+      else if (key === "k" || key === "g") {
+        const view: TimelineView = key === "g" ? "curves" : "keys";
+        if (dopeSheetExpanded && timelineView === view) setDopeSheetExpanded(false);
+        else {
+          setTimelineView(view);
+          setDopeSheetExpanded(true);
+        }
+      }
       else if (e.key === "Tab") {
         e.preventDefault();
         const anyOpen = leftPaneOpen || inspectorOpen || showAiCopilot;
@@ -444,7 +492,8 @@ export function StudioApp() {
         e.preventDefault();
         setIsPlaying(!isPlaying);
       } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        // Step one frame at the clip's frame rate.
+        // Step one frame at the clip's frame rate (and stop a focused slider from also moving).
+        e.preventDefault();
         const fps = currentClipObj?.fps ?? 24;
         const next = currentTime + (e.key === "ArrowRight" ? 1 : -1) / fps;
         setIsPlaying(false);
@@ -454,7 +503,7 @@ export function StudioApp() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brushRadius, isPlaying, leftPaneOpen, inspectorOpen, showAiCopilot, mode, project, redo, undo, currentTime, clipDuration]);
+  }, [brushRadius, isPlaying, leftPaneOpen, inspectorOpen, showAiCopilot, mode, project, redo, undo, currentTime, clipDuration, dopeSheetExpanded, timelineView]);
 
   const handleDownloadZip = () => {
     if (!exportData?.zipBase64) return;
@@ -851,8 +900,8 @@ export function StudioApp() {
 
         {/* ── Transport & timeline ───────────────────────────────────────────── */}
         <footer
-          className={`relative z-20 pointer-events-auto material rounded-[var(--radius-panel)] flex flex-col shrink-0 transition-[height] duration-300 ${
-            dopeSheetExpanded ? "h-60" : "h-12"
+          className={`relative z-20 pointer-events-auto ${dopeSheetExpanded ? "material-thick" : "material"} rounded-[var(--radius-panel)] flex flex-col shrink-0 transition-[height] duration-300 ${
+            dopeSheetExpanded ? (timelineView === "curves" ? "h-[380px]" : "h-[300px]") : "h-12"
           }`}
         >
           <div className="h-12 px-2 flex items-center gap-2 shrink-0">
@@ -933,7 +982,7 @@ export function StudioApp() {
               className="icon-btn"
               aria-pressed={dopeSheetExpanded}
               onClick={() => setDopeSheetExpanded(!dopeSheetExpanded)}
-              data-tip="Keyframes  K"
+              data-tip="Timeline  K · Curves  G"
               data-tip-side="top"
               aria-label="Toggle keyframe sheet"
             >
@@ -991,61 +1040,14 @@ export function StudioApp() {
             </div>
           </div>
 
-          {dopeSheetExpanded && (
-            <div className="flex-1 overflow-y-auto px-3 pb-2 pt-1 border-t border-[var(--separator)]">
-              {project.bones.map((bone, idx) => {
-                const keys = currentClipObj?.boneTracks[bone.name] ?? [];
-                const col = bone.color ?? RIG_BONE_PALETTE[idx % RIG_BONE_PALETTE.length];
-                const isSelected = bone.name === selectedBone;
-                return (
-                  <div
-                    key={bone.name}
-                    onClick={() => selectBone(bone.name)}
-                    className={`flex items-center gap-3 h-6 rounded-[6px] px-2 ${isSelected ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--fill-3)]"}`}
-                  >
-                    <span className="w-32 text-[12px] truncate shrink-0 flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: col }} />
-                      {bone.name}
-                    </span>
-                    <div className="relative flex-1 h-full">
-                      <div className="absolute inset-x-0 top-1/2 h-px bg-[var(--separator)]" />
-                      <div
-                        className="absolute top-0 bottom-0 w-px bg-[var(--accent)] pointer-events-none"
-                        style={{ left: `${Math.min(100, (currentTime / clipDuration) * 100)}%` }}
-                      />
-                      {keys.map((k, kIdx) => (
-                        <button
-                          key={kIdx}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (e.altKey) deleteBoneKeyframe(bone.name, k.time);
-                            else {
-                              setIsPlaying(false);
-                              setCurrentTime(k.time);
-                              selectBone(bone.name);
-                            }
-                          }}
-                          title={`${bone.name} · ${k.time.toFixed(2)}s · ${k.curve === "stepped" ? "stepped" : Array.isArray(k.curve) ? "eased" : "linear"} · ⌥-click to delete`}
-                          style={{ left: `${Math.max(0, Math.min(100, (k.time / clipDuration) * 100))}%` }}
-                          className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-2 w-2 rotate-45 rounded-[1px] transition-transform hover:scale-150 ${
-                            Array.isArray(k.curve) ? "bg-[var(--accent-hover)]" : "bg-[var(--label-2)]"
-                          }`}
-                          aria-label={`Keyframe ${bone.name} at ${k.time.toFixed(2)} seconds`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {dopeSheetExpanded && <TimelinePanel view={timelineView} onViewChange={setTimelineView} />}
         </footer>
       </div>
 
       {/* Copilot floats above the canvas so it never squeezes the inspector. */}
       {showAiCopilot && (
         <div
-          className={`fixed z-30 ${inspectorOpen ? "right-[318px]" : "right-2.5"} ${dopeSheetExpanded ? "bottom-[258px] h-[min(520px,calc(100vh-330px))]" : "bottom-[66px] h-[min(560px,calc(100vh-140px))]"} w-[360px] flex flex-col animate-panel-in`}
+          className={`fixed z-30 ${inspectorOpen ? "right-[318px]" : "right-2.5"} ${!dopeSheetExpanded ? "bottom-[66px] h-[min(560px,calc(100vh-140px))]" : timelineView === "curves" ? "bottom-[398px] h-[min(480px,calc(100vh-470px))]" : "bottom-[318px] h-[min(520px,calc(100vh-390px))]"} w-[360px] flex flex-col animate-panel-in`}
         >
           <AiAgentPanel onTriggerExport={handleRunExport} onHidePane={() => setShowAiCopilot(false)} widthClass="w-full" />
         </div>
