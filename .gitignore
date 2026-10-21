@@ -9,3 +9,6 @@ unity-verify/Temp/
 unity-verify/Logs/
 unity-verify/Obj/
 .DS_Store
+
+# Build artifacts
+*.tsbuildinfo

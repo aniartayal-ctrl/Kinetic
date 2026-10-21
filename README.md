@@ -1,8 +1,12 @@
 # Kinetic Pro — Apple Metal 2D Mesh, Rigging & Slot Game Animation Suite for Unity
 
-**Kinetic Pro** is a standalone 2D skeletal, contour Delaunay mesh, weight-painting, and slot game animation studio built with **Apple Metal GPU acceleration (`Kinetic Pro.app`)**, an **iOS 26 / macOS 26 Liquid Glass** Photoshop-adaptable workspace, an **AI Rigging Copilot (Cursor, Claude, ChatGPT, Grok)**, and a **3-Way Unity & Spine 4.2 Export Engine**.
+**Kinetic Pro** is a standalone 2D skeletal, contour Delaunay mesh, weight-painting, and slot game animation studio built with **Apple Metal GPU acceleration (`Kinetic Pro.app`)**, a macOS pro-app style workspace, an **AI Rigging Copilot (offline planner, Claude, ChatGPT or Grok)**, and a **3-Way Unity & Spine 4.2 Export Engine**.
 
 📖 **[Read the Complete User Manual (`USER_MANUAL.md`)](./USER_MANUAL.md)**
+
+![Kinetic Pro — studio with performance budget](./docs/screenshots/studio-budget.webp)
+
+![Kinetic Pro — bones, copilot and keyframe sheet](./docs/screenshots/studio-rig-timeline.webp)
 
 ![Kinetic Pro — 1-Click Auto Studio & Slot Stage Choreographer](./docs/screenshots/slot-suite-tumble.webp)
 
@@ -33,7 +37,10 @@
 
 5. **Triple Unity & Spine 4.2 Export Pipeline + Zero-Dependency Unity C# Runtime (`com.spineforge.runtime`)**
    - **Zero-Dependency Unity Runtime**: Exports `<id>.sfrig.json` + `<id>.slotanim.json` + `<id>.png` with `SpineForgeAnimator.cs` (`MeshFilter`/`MeshRenderer`, 4-bone LBS, `PolygonCollider2D` hitboxes, multi-skins, and `OnAnimationEvent` triggers)—no Spine license required.
-   - **Spine 4.2 Standard**: Exports `<id>.spine.json` + `<id>.atlas.txt` + `<id>.png`.
+   - **Spine 4.2 Standard**: Exports `<id>.spine.json` + `<id>.atlas.txt` + `<id>.png`. By default the export is **native**: authored easing curves are kept, spring bones become Spine 4.2 **physics constraints**, follow bones become **transform constraints**, and IK mix keys become IK timelines, so the file stays editable in Spine. Pass `physics: "bake"` to sample everything into plain keys for pre-4.2 runtimes. Every build is round-tripped through Esoteric's official `spine-core` 4.2 runtime in the test suite.
+
+6. **Performance Budget (Inspector → Budget)**
+   - Measures the real atlas pack, texture memory, mesh vertices, bones per vertex, draw-call breaks and constraint count against Symbol / Mobile / Desktop targets, with one-line advice for anything over. Targets are studio rules of thumb; adjust them in `src/core/budget.ts`.
    - **Baked Flipbook Sprite Sheet & Transparent `.WebM` Video**: Bakes multi-clip sprite sheets (`<id>-sheet.png` + `<id>.sprites.json`) on the Apple Metal GPU in ~200ms.
 
 ---
@@ -41,10 +48,10 @@
 ## Quick Start
 
 ```bash
-# 1. Launch the Native macOS Apple Metal App
-open "/Users/amit.tayal/Kinetic/Kinetic Pro.app"
+# 1. Launch the native macOS app (from the repo folder)
+open "Kinetic Pro.app"
 
-# 2. Start the WebGL2 Studio on http://localhost:3460
+# 2. Start the web studio on http://127.0.0.1:3460 (bound to this machine only)
 npm run dev
 
 # 3. Run Unit Tests & Unity C# Runtime Verification
@@ -53,3 +60,20 @@ npm run verify:all
 # 4. Export All Presets via CLI
 npm run export:cli -- all
 ```
+
+### AI Copilot keys and models
+
+The copilot works offline with its built-in planner. To use a cloud model, paste a key in the copilot's **API** drawer or set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `XAI_API_KEY`. Default models are `claude-sonnet-5-5`, `gpt-5-mini` and `grok-4`; override them with `KINETIC_CLAUDE_MODEL`, `KINETIC_OPENAI_MODEL` or `KINETIC_XAI_MODEL`. If a cloud call fails, the reply says why and falls back to the built-in planner.
+
+### Keyboard
+
+| Key | Action | Key | Action |
+| --- | --- | --- | --- |
+| O | Import | Space | Play / pause |
+| A | Auto rig | ← → | Step one frame |
+| P | Bones & IK | K | Keyframe sheet |
+| M | Mesh | I | Inspector |
+| B | Weight paint (`[` `]` brush size) | C | Copilot |
+| V | Pose | Tab | Hide all panels |
+| W | Warp | ⌘Z / ⇧⌘Z | Undo / redo (100 steps) |
+| E / ⌘E | Export | ⌘S | Save |
