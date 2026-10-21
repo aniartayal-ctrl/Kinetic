@@ -122,12 +122,31 @@ export function StudioViewport() {
   useEffect(() => {
     let rafId = 0;
     let lastNow = performance.now();
+    // Render on demand: while playing, and for a short settle window after any state change or
+    // pointer movement (physics and brush cursors need a few frames). Idle studios stay cool.
+    let lastState: unknown = null;
+    let lastActivity = performance.now();
+    const SETTLE_MS = 1500;
+    const onActivity = () => {
+      lastActivity = performance.now();
+    };
+    window.addEventListener("pointermove", onActivity, { passive: true });
+    window.addEventListener("pointerdown", onActivity, { passive: true });
+    window.addEventListener("resize", onActivity);
 
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - lastNow) / 1000) * playbackSpeed;
       lastNow = now;
 
       const store = useStudioStore.getState();
+      if (store !== lastState) {
+        lastState = store;
+        lastActivity = now;
+      }
+      if (!store.isPlaying && now - lastActivity > SETTLE_MS) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
       const renderer = rendererRef.current;
       const animator = animatorRef.current;
       const ghostAnim = ghostAnimatorRef.current;
@@ -523,7 +542,12 @@ export function StudioViewport() {
     };
 
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("pointermove", onActivity);
+      window.removeEventListener("pointerdown", onActivity);
+      window.removeEventListener("resize", onActivity);
+    };
   }, [playbackSpeed, setCurrentTime]);
 
   const eventToRigCoords = (e: ReactPointerEvent<HTMLCanvasElement>): { x: number; y: number } | null => {

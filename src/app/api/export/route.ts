@@ -13,6 +13,9 @@ export async function POST(request: Request) {
     };
 
     const project = body.project;
+    if (!project || !Array.isArray(project.bones) || !Array.isArray(project.parts) || typeof project.animations !== "object") {
+      return NextResponse.json({ error: "Invalid project payload" }, { status: 400 });
+    }
     const errors = validateProject(project);
     if (errors.length > 0) {
       return NextResponse.json({ error: errors.join("; ") }, { status: 400 });

@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { reviewClip } from "@/core/coach";
 import { keyPreservingShape } from "@/core/keyframes";
+import type { SpineForgeProject } from "@/core/schema";
 import { RIG_BONE_PALETTE } from "@/core/schema";
 import { buildBrowserUnityExportBundle } from "@/exporters/browser-bundle-builder";
 import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
 import { BudgetPanel } from "./BudgetPanel";
+import { PanelBoundary } from "./PanelBoundary";
 import { LeftToolOptionsPane, type ExportBundlePreviewData } from "./LeftToolOptionsPane";
 import { StudioViewport } from "./StudioViewport";
 import { TimelinePanel, type TimelineView } from "./TimelinePanel";
@@ -359,12 +362,75 @@ export function StudioApp() {
   const currentClipObj = project.animations[activeClip];
   const clipDuration = currentClipObj?.duration ?? 2.4;
 
-  const handleSaveProject = async () => {
-    setSaveState({ label: "Saving…", tone: "busy" });
+  /* ── Autosave: every 5 minutes when something changed, plus on tab hide, unload and errors ── */
+  const AUTOSAVE_KEY = "kinetic-pro:autosave";
+  const lastAutosaved = useRef<SpineForgeProject | null>(null);
+  const [recovery, setRecovery] = useState<{ savedAt: number; project: SpineForgeProject } | null>(null);
+
+  const autosave = (reason: string) => {
+    const current = useStudioStore.getState().project;
+    if (current === lastAutosaved.current) return;
     try {
-      localStorage.setItem(`kinetic-pro:${project.id}`, JSON.stringify(project));
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ savedAt: Date.now(), reason, project: current }));
+      lastAutosaved.current = current;
+      const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      setSaveState({ label: `Autosaved ${time}`, tone: "ok" });
     } catch {
-      // Storage full or blocked; the server save below still runs.
+      setSaveState({ label: "Autosave failed: browser storage full", tone: "local" });
+    }
+  };
+
+  useEffect(() => {
+    // Offer to restore work from a previous session that ended without a save.
+    try {
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { savedAt: number; project: SpineForgeProject };
+        if (saved?.project?.bones?.length && Date.now() - saved.savedAt < 14 * 24 * 3600 * 1000) setRecovery(saved);
+      }
+    } catch {
+      localStorage.removeItem(AUTOSAVE_KEY);
+    }
+    lastAutosaved.current = useStudioStore.getState().project; // nothing to save until the user changes something
+    const interval = window.setInterval(() => autosave("interval"), 5 * 60 * 1000);
+    const onHide = () => document.visibilityState === "hidden" && autosave("hidden");
+    const onUnload = () => autosave("unload");
+    const onCrash = () => autosave("error");
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("beforeunload", onUnload);
+    window.addEventListener("error", onCrash);
+    window.addEventListener("unhandledrejection", onCrash);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("beforeunload", onUnload);
+      window.removeEventListener("error", onCrash);
+      window.removeEventListener("unhandledrejection", onCrash);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const restoreAutosave = () => {
+    if (!recovery) return;
+    const p = recovery.project;
+    store.setProject(p, "Restored autosave");
+    selectBone(p.bones[1]?.name ?? p.bones[0]?.name ?? null);
+    selectPart(p.parts[0]?.name ?? null);
+    if (!p.animations[activeClip]) setActiveClip(Object.keys(p.animations)[0] ?? activeClip);
+    lastAutosaved.current = p;
+    setRecovery(null);
+  };
+
+  const cueCount = useMemo(() => reviewClip(project, activeClip).length, [project, activeClip]);
+
+  const handleSaveProject = async () => {
+    autosave("save"); // keep the recovery copy current; the studio boots from presets
+    setSaveState({ label: "Saving…", tone: "busy" });
+    // Drop the old per-project copies (never read back) so they cannot fill the storage quota.
+    try {
+      for (const key of Object.keys(localStorage)) if (key.startsWith("kinetic-pro:") && key !== AUTOSAVE_KEY) localStorage.removeItem(key);
+    } catch {
+      // Storage blocked; the server save below still runs.
     }
     try {
       const res = await fetch("/api/save-project", {
@@ -549,7 +615,9 @@ export function StudioApp() {
   return (
     <div className="relative h-screen w-screen overflow-hidden select-none">
       {/* The canvas fills the window; every panel floats above it. */}
-      <StudioViewport />
+      <PanelBoundary name="Canvas" onError={() => autosave("error")} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+        <StudioViewport />
+      </PanelBoundary>
 
       <div className="fixed inset-0 z-20 pointer-events-none flex flex-col gap-2 p-2.5">
         {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
@@ -634,14 +702,19 @@ export function StudioApp() {
               )}
             </div>
             <button
-              className="icon-btn"
+              className="icon-btn relative"
               aria-pressed={showAiCopilot}
               onClick={() => setShowAiCopilot((v) => !v)}
               data-tip="Copilot  C"
               data-tip-side="bottom"
-              aria-label="Toggle AI copilot"
+              aria-label={`Toggle AI copilot${cueCount ? `, ${cueCount} suggestions` : ""}`}
             >
               <Icon name="copilot" />
+              {cueCount > 0 && !showAiCopilot && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-[#ff9f0a] text-[10px] font-semibold text-black grid place-items-center tabular-nums">
+                  {cueCount}
+                </span>
+              )}
             </button>
             <button
               className="icon-btn"
@@ -704,14 +777,16 @@ export function StudioApp() {
 
           {leftPaneOpen && (
             <div className="flex flex-col min-h-0 animate-panel-in">
-              <LeftToolOptionsPane
-                onShipToUnity={handleRunExport}
-                onHidePane={() => setLeftPaneOpen(false)}
-                exportData={exportData}
-                isExporting={isExporting}
-                onDownloadZip={handleDownloadZip}
-                onExportWebM={handleExportTransparentWebM}
-              />
+              <PanelBoundary name="Tool options" onError={() => autosave("error")}>
+                <LeftToolOptionsPane
+                  onShipToUnity={handleRunExport}
+                  onHidePane={() => setLeftPaneOpen(false)}
+                  exportData={exportData}
+                  isExporting={isExporting}
+                  onDownloadZip={handleDownloadZip}
+                  onExportWebM={handleExportTransparentWebM}
+                />
+              </PanelBoundary>
             </div>
           )}
 
@@ -892,7 +967,11 @@ export function StudioApp() {
                   </ul>
                 )}
 
-                {inspectorTab === "budget" && <BudgetPanel />}
+                {inspectorTab === "budget" && (
+                  <PanelBoundary name="Budget" onError={() => autosave("error")}>
+                    <BudgetPanel />
+                  </PanelBoundary>
+                )}
               </div>
             </aside>
           )}
@@ -1040,7 +1119,11 @@ export function StudioApp() {
             </div>
           </div>
 
-          {dopeSheetExpanded && <TimelinePanel view={timelineView} onViewChange={setTimelineView} />}
+          {dopeSheetExpanded && (
+            <PanelBoundary name="Timeline" onError={() => autosave("error")} className="m-2">
+              <TimelinePanel view={timelineView} onViewChange={setTimelineView} />
+            </PanelBoundary>
+          )}
         </footer>
       </div>
 
@@ -1049,7 +1132,38 @@ export function StudioApp() {
         <div
           className={`fixed z-30 ${inspectorOpen ? "right-[318px]" : "right-2.5"} ${!dopeSheetExpanded ? "bottom-[66px] h-[min(560px,calc(100vh-140px))]" : timelineView === "curves" ? "bottom-[398px] h-[min(480px,calc(100vh-470px))]" : "bottom-[318px] h-[min(520px,calc(100vh-390px))]"} w-[360px] flex flex-col animate-panel-in`}
         >
-          <AiAgentPanel onTriggerExport={handleRunExport} onHidePane={() => setShowAiCopilot(false)} widthClass="w-full" />
+          <PanelBoundary name="Copilot" onError={() => autosave("error")}>
+            <AiAgentPanel
+              onExport={handleRunExport}
+              onSave={handleSaveProject}
+              onOpenBudget={() => {
+                setInspectorOpen(true);
+                setInspectorTab("budget");
+              }}
+              onHidePane={() => setShowAiCopilot(false)}
+            />
+          </PanelBoundary>
+        </div>
+      )}
+
+      {recovery && (
+        <div role="status" className="fixed z-40 top-[64px] left-1/2 -translate-x-1/2 material-thick rounded-[12px] pl-4 pr-2 py-2 flex items-center gap-3 animate-panel-in">
+          <span className="text-[13px]">
+            Unsaved work from {new Date(recovery.savedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+            <span className="text-[var(--label-2)]"> · {recovery.project.title}</span>
+          </span>
+          <button className="btn-primary h-7 px-3 text-[12px]" onClick={restoreAutosave}>
+            Restore
+          </button>
+          <button
+            className="icon-btn h-7 w-auto px-2.5 text-[12px]"
+            onClick={() => {
+              localStorage.removeItem(AUTOSAVE_KEY);
+              setRecovery(null);
+            }}
+          >
+            Discard
+          </button>
         </div>
       )}
 

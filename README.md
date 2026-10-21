@@ -63,6 +63,24 @@ npm run verify:all
 npm run export:cli -- all
 ```
 
+### Copilot: run the whole studio in plain words
+
+Open with **C**. The built-in planner works offline; Claude, ChatGPT or Grok can be used with a key. Every feature is a copilot tool: selection, tools, overlays, playback, auto-rig, bones, pivots, IK, physics, bone locks, mesh density and weight solvers, warp reset, keys, breakdowns, pose copy/paste, curves, retiming, fps, looping, clip generation, physics baking, Unity events, skins, budget, undo/redo, save and export (31 tools, `src/core/copilot/tools.ts`). Chain steps with "then":
+
+> mesh the body dense with heat weights, add physics to the cape, then make it snappier
+
+Each step reports ✓ or ✕ with the reason; invalid names or values are rejected without touching the rig.
+
+**Animation coach.** The copilot reviews the open clip against the principles of animation and shows cue cards with one-click fixes: slow in and slow out (eases linear moves), anticipation (adds a wind-up before the biggest move), follow-through (overshoot and settle), squash and stretch on impact, secondary action (physics on capes, hair, tails), exaggeration, keys between frames, loop seams, and even timing. The badge on the copilot button counts open suggestions. "Fix everything" applies them all as one undo step.
+
+### Autosave and recovery
+
+Work is autosaved to the browser every 5 minutes when something changed, and immediately when the tab is hidden or closed or an error occurs. On the next launch the studio offers to restore it. If a panel fails, only that panel shows an error (with Reload) while the rest keeps running.
+
+### Testing
+
+`npm test` runs 28 unit tests, including Spine 4.2 runtime round-trips, the copilot planner (30 plain-English commands) and every coach fix. `npm run test:ui` (with the studio running) clicks through every tool, overlay, tab, clip, shortcut and copilot command, applies coach fixes, checks autosave and restore on a fast-forwarded clock, then runs a seeded random-click pass, failing on any page or console error.
+
 ### AI Copilot keys and models
 
 The copilot works offline with its built-in planner. To use a cloud model, paste a key in the copilot's **API** drawer or set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `XAI_API_KEY`. Default models are `claude-sonnet-5-5`, `gpt-5-mini` and `grok-4`; override them with `KINETIC_CLAUDE_MODEL`, `KINETIC_OPENAI_MODEL` or `KINETIC_XAI_MODEL`. If a cloud call fails, the reply says why and falls back to the built-in planner.
