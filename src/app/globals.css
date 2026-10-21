@@ -1,111 +1,346 @@
 @import "tailwindcss";
 
+/*
+ * Kinetic design system
+ * ─────────────────────
+ * Modeled on Apple's dark pro-app conventions (Final Cut Pro, Logic, Xcode inspectors):
+ * - One accent colour (system blue). Colour carries meaning (selection, status), never decoration.
+ * - Neutral label hierarchy: primary / secondary / tertiary text instead of coloured headings.
+ * - Translucent "materials" with hairline borders; depth comes from blur and a single soft shadow.
+ * - 4 pt spacing grid, 13 px body text, 11 px small caps for section titles.
+ *
+ * Tailwind's sky/cyan/amber/emerald/rose/purple scales are remapped below onto Apple's semantic
+ * system colours so every existing utility class inherits the same restrained palette.
+ */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+
+  /* systemBlue (accent) */
+  --color-sky-100: #d6e9ff;
+  --color-sky-200: #a9d1ff;
+  --color-sky-300: #64b0ff;
+  --color-sky-400: #3d9bff;
+  --color-sky-500: #0a84ff;
+  --color-sky-600: #0071e3;
+  --color-cyan-100: #d6e9ff;
+  --color-cyan-200: #a9d1ff;
+  --color-cyan-300: #64b0ff;
+  --color-cyan-400: #3d9bff;
+  --color-cyan-500: #0a84ff;
+
+  /* systemOrange (attention, keys, events) */
+  --color-amber-100: #ffe7c7;
+  --color-amber-200: #ffcf8f;
+  --color-amber-300: #ffb340;
+  --color-amber-400: #ff9f0a;
+  --color-amber-500: #f08c00;
+  --color-yellow-300: #ffd60a;
+  --color-yellow-400: #ffd60a;
+
+  /* systemGreen (success, export) */
+  --color-emerald-100: #d3f7dc;
+  --color-emerald-200: #a6efb8;
+  --color-emerald-300: #5fe07f;
+  --color-emerald-400: #30d158;
+  --color-emerald-500: #28b84c;
+
+  /* systemRed (destructive, locked) */
+  --color-rose-200: #ffb3ad;
+  --color-rose-300: #ff8077;
+  --color-rose-400: #ff5c52;
+  --color-rose-500: #ff453a;
+
+  /* systemIndigo (AI, lighting) */
+  --color-purple-200: #c9c7ff;
+  --color-purple-300: #a5a2ff;
+  --color-purple-400: #7d7aff;
+  --color-purple-500: #5e5ce6;
+}
+
 :root {
-  --glass-bg: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.13) 0%,
-    rgba(255, 255, 255, 0.05) 42%,
-    rgba(15, 23, 42, 0.52) 100%
-  );
-  --glass-bg-elevated: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.2) 0%,
-    rgba(255, 255, 255, 0.08) 50%,
-    rgba(30, 41, 59, 0.58) 100%
-  );
-  --glass-border: rgba(255, 255, 255, 0.18);
-  --glass-specular: inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.42),
-    inset 0 -1px 0.5px 0 rgba(255, 255, 255, 0.06),
-    inset 1px 0 0.5px 0 rgba(255, 255, 255, 0.14);
-  --glass-shadow: 0 24px 60px -12px rgba(2, 6, 23, 0.78),
-    0 4px 16px -2px rgba(14, 165, 233, 0.08);
+  color-scheme: dark;
+
+  --accent: #0a84ff;
+  --accent-hover: #3d9bff;
+  --accent-soft: rgba(10, 132, 255, 0.18);
+
+  --label: rgba(255, 255, 255, 0.92);
+  --label-2: rgba(235, 235, 245, 0.6);
+  --label-3: rgba(235, 235, 245, 0.38);
+  --separator: rgba(255, 255, 255, 0.08);
+  --separator-strong: rgba(255, 255, 255, 0.14);
+
+  --material: rgba(30, 30, 32, 0.72);
+  --material-thick: rgba(40, 40, 42, 0.96);
+  --fill: rgba(120, 120, 128, 0.2);
+  --fill-2: rgba(120, 120, 128, 0.14);
+  --fill-3: rgba(118, 118, 128, 0.1);
+
+  --radius-panel: 14px;
+  --radius-control: 8px;
+  --shadow-panel: 0 0 0 0.5px rgba(0, 0, 0, 0.6), 0 12px 40px -8px rgba(0, 0, 0, 0.55);
+  --ease: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
-  background: #040711;
-  color: #f8fafc;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+  background: #0b0b0d;
+  color: var(--label);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
 
-/* iOS 26 / macOS 26 Liquid Glass Material Classes */
-.liquid-glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
-  -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(1.06);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-specular), var(--glass-shadow);
+/* ── Materials ─────────────────────────────────────────────────────────────────────────────── */
+
+/* Panels, rails, toolbars. Legacy class name kept so every panel inherits the new material. */
+.liquid-glass,
+.material {
+  background: var(--material);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border: 0.5px solid var(--separator-strong);
+  box-shadow: var(--shadow-panel);
 }
 
-.liquid-glass-pill {
-  background: var(--glass-bg-elevated);
-  backdrop-filter: blur(48px) saturate(220%) brightness(1.1);
-  -webkit-backdrop-filter: blur(48px) saturate(220%) brightness(1.1);
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.25),
-    0 18px 42px -8px rgba(0, 0, 0, 0.72),
-    0 0 28px -6px rgba(56, 189, 248, 0.16);
+.liquid-glass-pill,
+.material-thick {
+  background: var(--material-thick);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 0.5px solid var(--separator-strong);
+  box-shadow: var(--shadow-panel);
 }
 
+/* Inset groups (inspector cards, input wells). */
 .liquid-glass-well {
-  background: rgba(6, 10, 22, 0.46);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.55),
-    0 1px 0 rgba(255, 255, 255, 0.12);
+  background: var(--fill-3);
+  border: 0.5px solid var(--separator);
+  box-shadow: none;
 }
 
+/* Secondary buttons. */
 .liquid-glass-button {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.16) 0%,
-    rgba(255, 255, 255, 0.06) 100%
-  );
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.38),
-    0 4px 12px rgba(0, 0, 0, 0.35);
-  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  background: var(--fill-2);
+  border: 0.5px solid var(--separator);
+  box-shadow: none;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease),
+    transform 0.15s var(--ease);
 }
-
 .liquid-glass-button:hover {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.24) 0%,
-    rgba(255, 255, 255, 0.1) 100%
-  );
-  border-color: rgba(255, 255, 255, 0.32);
-  transform: translateY(-0.5px);
+  background: var(--fill);
+}
+.liquid-glass-button:active {
+  transform: scale(0.97);
 }
 
+/* Selected / on state. */
 .liquid-glass-active {
-  background: linear-gradient(
-    180deg,
-    rgba(125, 211, 252, 0.95) 0%,
-    rgba(14, 165, 233, 0.92) 100%
-  );
-  color: #020617;
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  box-shadow: inset 0 1px 1.5px rgba(255, 255, 255, 0.85),
-    0 0 22px rgba(56, 189, 248, 0.5),
-    0 4px 12px rgba(0, 0, 0, 0.4);
+  background: var(--accent);
+  color: #fff;
+  border: 0.5px solid transparent;
+  box-shadow: none;
 }
 
-/* Custom sleek scrollbars inside glass cards */
+/* Component classes live in the components layer so Tailwind utilities (absolute, w-*, etc.) still win. */
+@layer components {
+/* Primary call to action. Use once per area. */
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 999px;
+  transition:
+    background 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+.btn-primary:active {
+  transform: scale(0.97);
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+}
+
+/* Inspector section heading (Apple "small caps" label). */
+.section-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--label-2);
+}
+
+/* Segmented control (track + selected thumb). */
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--radius-control);
+  background: var(--fill-3);
+}
+.segmented > button {
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--label-2);
+  white-space: nowrap;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+.segmented > button:hover {
+  color: var(--label);
+}
+.segmented > button[aria-pressed="true"] {
+  background: rgba(99, 99, 102, 0.7);
+  color: var(--label);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/* Toolbar / rail icon button. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-control);
+  color: var(--label-2);
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+.icon-btn:hover {
+  background: var(--fill-2);
+  color: var(--label);
+}
+.icon-btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Rich tooltip for rail and toolbar buttons (CSS-only, appears after a short delay). */
+[data-tip] {
+  position: relative;
+}
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 60;
+  white-space: nowrap;
+  pointer-events: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--label);
+  background: rgba(44, 44, 46, 0.96);
+  border: 0.5px solid var(--separator-strong);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.12s var(--ease) 0s;
+}
+[data-tip]:hover::after {
+  opacity: 1;
+  transition-delay: 0.45s;
+}
+/* No tooltip while the button's own menu is open. */
+[data-tip][aria-haspopup][aria-pressed="true"]::after {
+  display: none;
+}
+[data-tip-side="right"]::after {
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+[data-tip-side="bottom"]::after {
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+[data-tip-side="top"]::after {
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+kbd {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--label-3);
+}
+
+}
+
+/* Native controls tuned to the palette. */
+input[type="range"] {
+  accent-color: var(--accent);
+}
+select,
+input,
+textarea {
+  color-scheme: dark;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Panel entrance. Respects reduced-motion. */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-panel-in {
+  animation: panel-in 0.22s var(--ease) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Scrollbars that only appear on intent. */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.24);
+  background-clip: padding-box;
 }

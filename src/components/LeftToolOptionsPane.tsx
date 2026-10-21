@@ -37,6 +37,16 @@ export type ExportBundlePreviewData = {
   zipBase64: string;
 };
 
+/** Reads the frame count from an exported sprite-sheet manifest without trusting its shape. */
+function sheetFrameCount(json: string): number {
+  try {
+    const frames = (JSON.parse(json) as { frames?: unknown[] }).frames;
+    return Array.isArray(frames) ? frames.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function LeftToolOptionsPane({
   onShipToUnity,
   onHidePane,
@@ -76,13 +86,10 @@ export function LeftToolOptionsPane({
     loadPreset,
     loadSymbolRig,
     setActiveSkin,
-    runOneClickAutoRig,
-    setMode,
     selectBone,
     selectPart,
     updateBone,
     addBone,
-    updatePart,
     updateIkMix,
     regeneratePartMesh,
     resetPartLiquifyDeform,
@@ -97,10 +104,6 @@ export function LeftToolOptionsPane({
     applyVoiceLipSync,
     setBoneKeyframeAtCurrentTime,
     setBoneCurveAtCurrentTime,
-    undo,
-    redo,
-    history,
-    historyIndex,
   } = useStudioStore();
 
   // State for Import PSD / Smart Part Knife
@@ -163,27 +166,26 @@ export function LeftToolOptionsPane({
 
   return (
     <aside
-      className={`pointer-events-auto w-84 rounded-[26px] liquid-glass flex flex-col overflow-hidden transition-all ${
+      className={`pointer-events-auto w-[320px] rounded-[var(--radius-panel)] liquid-glass flex flex-col overflow-hidden transition-all ${
         isShaded ? "shrink-0" : "flex-1 min-h-0"
       }`}
     >
       {/* 1. PANE HEADER: Shows active Photoshop Tool + Shade (_) + Hide («) Controls */}
       <div className="p-3 border-b border-white/12 flex items-center justify-between gap-2 shrink-0">
         <div className="min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-sky-300 block truncate">
-            {mode === "import"
-              ? "Import PSD & Document Setup"
-              : mode === "animate"
-                ? "Move & Free Transform Tool (V)"
-                : mode === "rig"
-                  ? "Bone & IK Pin Tool (P)"
-                  : mode === "mesh"
-                    ? "Puppet Warp Mesh Tool (M)"
-                    : mode === "weights"
-                      ? "GPU Weight Paint Brush (B)"
-                      : mode === "liquify"
-                        ? "Liquify FFD Sculpt Tool (W)"
-                        : "Unity & Spine 4.2 Export (E)"}
+          <span className="text-[11px] font-semibold text-[var(--label-2)] block truncate">
+            {
+              {
+                import: "Import",
+                animate: "Pose",
+                rig: "Bones & IK",
+                mesh: "Mesh",
+                weights: "Weight Paint",
+                liquify: "Warp",
+                export: "Export",
+                auto: "Auto Rig",
+              }[mode]
+            }
           </span>
           <h2 className="text-xs font-bold text-white mt-0.5 truncate">
             {mode === "import" || mode === "export"
@@ -195,32 +197,6 @@ export function LeftToolOptionsPane({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={undo}
-            disabled={historyIndex <= 0}
-            title="Undo (⌘Z)"
-            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35 flex items-center justify-center"
-          >
-            ↶
-          </button>
-          <button
-            onClick={redo}
-            disabled={historyIndex >= history.length - 1}
-            title="Redo (⇧⌘Z)"
-            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35 flex items-center justify-center"
-          >
-            ↷
-          </button>
-          <button
-            onClick={() => {
-              runOneClickAutoRig();
-              setMode("auto");
-            }}
-            title="Switch to 1-Click Magic Wand Auto-Rig (A)"
-            className="whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold liquid-glass-button text-cyan-200 hover:text-white"
-          >
-            🪄 Auto
-          </button>
           <button
             onClick={() => setIsShaded(!isShaded)}
             title={isShaded ? "Expand Panel Body" : "Shade / Collapse Panel Body"}
@@ -250,7 +226,7 @@ export function LeftToolOptionsPane({
           <>
             {/* Document Preset & Multi-Skin Tier Selector */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
-              <span className="text-[11px] font-bold text-sky-300 block">
+              <span className="section-title">
                 1. Active PSD Document & Skin Tier
               </span>
               <label className="block space-y-1">
@@ -289,10 +265,10 @@ export function LeftToolOptionsPane({
             {/* Upload Layered .PSD or Flat .PNG / .WebP */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-emerald-300">
+                <span className="section-title">
                   2. Import Photoshop .PSD or Cut PNG
                 </span>
-                <span className="text-[10px] font-mono text-slate-400">
+                <span className="text-[10px] tabular-nums text-slate-400">
                   {project.width}×{project.height}
                 </span>
               </div>
@@ -309,7 +285,7 @@ export function LeftToolOptionsPane({
                 className="block w-full text-[11px] text-slate-300 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-[11px] file:font-bold file:bg-sky-400 file:text-slate-950 cursor-pointer"
               />
               {cutterStatus && (
-                <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-[11px] font-mono text-emerald-200">
+                <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-[11px] tabular-nums text-emerald-200">
                   {cutterStatus}
                 </div>
               )}
@@ -317,14 +293,14 @@ export function LeftToolOptionsPane({
 
             {/* Smart Part Cutter & Joint Cover Options */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
-              <span className="text-[11px] font-bold text-amber-300 block">
+              <span className="section-title">
                 3. Smart Part Knife & Inpaint Options
               </span>
 
               <label className="block space-y-1">
                 <div className="flex justify-between text-[11px] text-slate-300">
                   <span>Joint Cover Ring Radius</span>
-                  <span className="font-mono text-white">{Math.round(jointCoverRadius * 100)}%</span>
+                  <span className="tabular-nums text-white">{Math.round(jointCoverRadius * 100)}%</span>
                 </div>
                 <input
                   type="range"
@@ -333,14 +309,14 @@ export function LeftToolOptionsPane({
                   step="0.005"
                   value={jointCoverRadius}
                   onChange={(e) => setJointCoverRadius(parseFloat(e.target.value))}
-                  className="w-full accent-amber-400"
+                  className="w-full"
                 />
               </label>
 
               <label className="block space-y-1">
                 <div className="flex justify-between text-[11px] text-slate-300">
                   <span>Alpha Trim Threshold</span>
-                  <span className="font-mono text-white">{alphaThreshold} / 255</span>
+                  <span className="tabular-nums text-white">{alphaThreshold} / 255</span>
                 </div>
                 <input
                   type="range"
@@ -349,7 +325,7 @@ export function LeftToolOptionsPane({
                   step="1"
                   value={alphaThreshold}
                   onChange={(e) => setAlphaThreshold(parseInt(e.target.value, 10))}
-                  className="w-full accent-amber-400"
+                  className="w-full"
                 />
               </label>
 
@@ -358,7 +334,7 @@ export function LeftToolOptionsPane({
                   type="checkbox"
                   checked={inpaintTorso}
                   onChange={(e) => setInpaintTorso(e.target.checked)}
-                  className="accent-emerald-400"
+                  
                 />
                 Inpaint Occluded Torso Behind Limbs (Telea)
               </label>
@@ -367,7 +343,7 @@ export function LeftToolOptionsPane({
             {/* Batch 8-Symbol Pack Switcher */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-purple-300">
+                <span className="section-title">
                   4. Open Slot Symbol from Pack (8)
                 </span>
                 <button
@@ -388,7 +364,7 @@ export function LeftToolOptionsPane({
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={sym.src} alt={sym.label} className="w-8 h-8 object-contain" />
-                    <span className="text-[9px] font-mono uppercase font-bold text-slate-200">{sym.role}</span>
+                    <span className="text-[9px] tabular-nums uppercase font-bold text-slate-200">{sym.role}</span>
                   </button>
                 ))}
               </div>
@@ -404,7 +380,7 @@ export function LeftToolOptionsPane({
             {/* Active Bone Numeric Transform */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-sky-300">
+                <span className="section-title">
                   Free Transform ({currentBoneObj.name})
                 </span>
                 <button
@@ -437,7 +413,7 @@ export function LeftToolOptionsPane({
                         r: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                   />
                 </label>
                 <label className="space-y-1">
@@ -452,7 +428,7 @@ export function LeftToolOptionsPane({
                         x: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                   />
                 </label>
                 <label className="space-y-1">
@@ -467,7 +443,7 @@ export function LeftToolOptionsPane({
                         y: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                   />
                 </label>
               </div>
@@ -485,7 +461,7 @@ export function LeftToolOptionsPane({
                         sx: parseFloat(e.target.value) || 1,
                       })
                     }
-                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                   />
                 </label>
                 <label className="space-y-1">
@@ -500,7 +476,7 @@ export function LeftToolOptionsPane({
                         sy: parseFloat(e.target.value) || 1,
                       })
                     }
-                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                   />
                 </label>
               </div>
@@ -509,7 +485,7 @@ export function LeftToolOptionsPane({
             {/* Visual Cubic Bezier Curve Graph Editor */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-cyan-300">Bezier Easing Curve</span>
+                <span className="section-title">Bezier Easing Curve</span>
                 <svg width="48" height="32" viewBox="0 0 44 32" className="rounded bg-black/40 border border-white/10">
                   <path
                     d={activeBezierPreset.svgPath}
@@ -543,13 +519,13 @@ export function LeftToolOptionsPane({
             {/* 2.5D Parallax Look-At & Voice Lip-Sync */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-amber-300">2.5D Parallax & Lip-Sync</span>
+                <span className="section-title">2.5D Parallax & Lip-Sync</span>
                 <label className="flex items-center gap-1.5 text-[10.5px] text-slate-300 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={parallax.enabled}
                     onChange={(e) => setParallaxConfig({ enabled: e.target.checked })}
-                    className="accent-sky-400"
+                    
                   />
                   Enable 2.5D Turn
                 </label>
@@ -558,7 +534,7 @@ export function LeftToolOptionsPane({
               <label className="block space-y-1">
                 <div className="flex justify-between text-[10.5px] text-slate-300">
                   <span>Parallax Depth Intensity</span>
-                  <span className="font-mono text-white">{Math.round(parallax.depthIntensity * 100)}%</span>
+                  <span className="tabular-nums text-white">{Math.round(parallax.depthIntensity * 100)}%</span>
                 </div>
                 <input
                   type="range"
@@ -567,7 +543,7 @@ export function LeftToolOptionsPane({
                   step="0.1"
                   value={parallax.depthIntensity}
                   onChange={(e) => setParallaxConfig({ depthIntensity: parseFloat(e.target.value) })}
-                  className="w-full accent-sky-400"
+                  className="w-full"
                 />
               </label>
 
@@ -580,7 +556,7 @@ export function LeftToolOptionsPane({
                       onClick={() => applyVoiceLipSync(vp.id)}
                       className="px-2 py-0.5 rounded-full liquid-glass-button text-[9.5px] text-sky-200 hover:text-white"
                     >
-                      🎙 {vp.transcript}
+                      {vp.transcript}
                     </button>
                   ))}
                 </div>
@@ -590,18 +566,18 @@ export function LeftToolOptionsPane({
             {/* 3D Normal-Map Point Relighting */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-purple-300">3D Normal Point Light</span>
+                <span className="section-title">3D Normal Point Light</span>
                 <input
                   type="checkbox"
                   checked={enable3DRelight}
                   onChange={() => toggleOverlay("enable3DRelight")}
-                  className="accent-purple-400"
+                  
                 />
               </div>
               <label className="block space-y-0.5">
                 <div className="flex justify-between text-[10.5px] text-slate-300">
                   <span>Light Direction Angle</span>
-                  <span className="font-mono text-white">{lightAngleDeg}°</span>
+                  <span className="tabular-nums text-white">{lightAngleDeg}°</span>
                 </div>
                 <input
                   type="range"
@@ -609,13 +585,13 @@ export function LeftToolOptionsPane({
                   max="180"
                   value={lightAngleDeg}
                   onChange={(e) => setLightParams(parseFloat(e.target.value), lightIntensity)}
-                  className="w-full accent-purple-400"
+                  className="w-full"
                 />
               </label>
               <label className="block space-y-0.5">
                 <div className="flex justify-between text-[10.5px] text-slate-300">
                   <span>Light Intensity</span>
-                  <span className="font-mono text-white">{Math.round(lightIntensity * 100)}%</span>
+                  <span className="tabular-nums text-white">{Math.round(lightIntensity * 100)}%</span>
                 </div>
                 <input
                   type="range"
@@ -624,7 +600,7 @@ export function LeftToolOptionsPane({
                   step="0.05"
                   value={lightIntensity}
                   onChange={(e) => setLightParams(lightAngleDeg, parseFloat(e.target.value))}
-                  className="w-full accent-purple-400"
+                  className="w-full"
                 />
               </label>
             </div>
@@ -639,10 +615,10 @@ export function LeftToolOptionsPane({
             {/* Bind Pivot Coordinates & Length */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-sky-300">
+                <span className="section-title">
                   Bind Pivot ({currentBoneObj.name})
                 </span>
-                <span className="text-[10px] font-mono text-slate-400">
+                <span className="text-[10px] tabular-nums text-slate-400">
                   Parent: {currentBoneObj.parent ?? "None (Root)"}
                 </span>
               </div>
@@ -655,7 +631,7 @@ export function LeftToolOptionsPane({
                     step="0.005"
                     value={currentBoneObj.x}
                     onChange={(e) => updateBone(currentBoneObj.name, { x: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                   />
                 </label>
                 <label className="space-y-1">
@@ -665,7 +641,7 @@ export function LeftToolOptionsPane({
                     step="0.005"
                     value={currentBoneObj.y}
                     onChange={(e) => updateBone(currentBoneObj.name, { y: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                   />
                 </label>
                 <label className="space-y-1">
@@ -675,7 +651,7 @@ export function LeftToolOptionsPane({
                     step="0.01"
                     value={currentBoneObj.length ?? 0.08}
                     onChange={(e) => updateBone(currentBoneObj.name, { length: parseFloat(e.target.value) || 0.08 })}
-                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                    className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                   />
                 </label>
               </div>
@@ -710,14 +686,14 @@ export function LeftToolOptionsPane({
             {/* 2-Bone Analytical IK Constraints */}
             {project.ikConstraints.length > 0 && (
               <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
-                <span className="text-[11px] font-bold text-amber-300 block">
+                <span className="section-title">
                   2-Bone Analytical IK Pins
                 </span>
                 {project.ikConstraints.map((ik) => (
                   <div key={ik.name} className="space-y-1.5">
                     <div className="flex justify-between text-[11px]">
                       <span className="text-slate-200 font-semibold">{ik.name}</span>
-                      <span className="font-mono text-sky-300">Mix: {Math.round(ik.mix * 100)}%</span>
+                      <span className="tabular-nums text-sky-300">Mix: {Math.round(ik.mix * 100)}%</span>
                     </div>
                     <input
                       type="range"
@@ -726,14 +702,14 @@ export function LeftToolOptionsPane({
                       step="0.05"
                       value={ik.mix}
                       onChange={(e) => updateIkMix(ik.name, parseFloat(e.target.value))}
-                      className="w-full accent-sky-400"
+                      className="w-full"
                     />
                     <label className="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={ik.bendPositive}
                         onChange={(e) => updateIkMix(ik.name, ik.mix, e.target.checked)}
-                        className="accent-sky-400"
+                        
                       />
                       Clockwise Elbow / Knee Bend Direction
                     </label>
@@ -745,7 +721,7 @@ export function LeftToolOptionsPane({
             {/* Secondary Spring Physics */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-emerald-300">
+                <span className="section-title">
                   Spring Secondary Physics ({currentBoneObj.name})
                 </span>
                 <input
@@ -758,7 +734,7 @@ export function LeftToolOptionsPane({
                         : undefined,
                     })
                   }
-                  className="accent-emerald-400"
+                  
                 />
               </div>
               {currentBoneObj.spring && (
@@ -773,7 +749,7 @@ export function LeftToolOptionsPane({
                           spring: { ...currentBoneObj.spring!, stiffness: parseFloat(e.target.value) || 50 },
                         })
                       }
-                      className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                      className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                     />
                   </label>
                   <label className="space-y-1">
@@ -786,7 +762,7 @@ export function LeftToolOptionsPane({
                           spring: { ...currentBoneObj.spring!, damping: parseFloat(e.target.value) || 6 },
                         })
                       }
-                      className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                      className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                     />
                   </label>
                   <label className="space-y-1">
@@ -800,7 +776,7 @@ export function LeftToolOptionsPane({
                           spring: { ...currentBoneObj.spring!, wind: parseFloat(e.target.value) || 0 },
                         })
                       }
-                      className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 font-mono text-white"
+                      className="w-full bg-white/8 border border-white/15 rounded-xl px-2 py-1 tabular-nums text-white"
                     />
                   </label>
                 </div>
@@ -811,7 +787,7 @@ export function LeftToolOptionsPane({
                   type="checkbox"
                   checked={showCapsules}
                   onChange={() => toggleOverlay("showCapsules")}
-                  className="accent-amber-400"
+                  
                 />
                 Show Capsule Weight Envelopes on Canvas
               </label>
@@ -826,10 +802,10 @@ export function LeftToolOptionsPane({
           <>
             <div className="p-3 rounded-2xl liquid-glass-well space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-sky-300">
+                <span className="section-title">
                   Delaunay Contour Mesher
                 </span>
-                <span className="text-[10px] font-mono text-emerald-300">
+                <span className="text-[10px] tabular-nums text-emerald-300">
                   {currentPartObj.mesh ? currentPartObj.mesh.positions.length / 2 : 4}v ·{" "}
                   {currentPartObj.mesh ? currentPartObj.mesh.indices.length / 3 : 2}t
                 </span>
@@ -899,19 +875,19 @@ export function LeftToolOptionsPane({
 
             {/* Rigid vs Skinned Binding Mode */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
-              <span className="text-[11px] font-bold text-amber-300 block">
+              <span className="section-title">
                 Layer Binding Mode ({currentPartObj.name})
               </span>
               <div className="flex items-center justify-between text-[11px] text-slate-300">
                 <span>Hull Vertices:</span>
-                <span className="font-mono text-white">{currentPartObj.mesh?.hullCount ?? 4}</span>
+                <span className="tabular-nums text-white">{currentPartObj.mesh?.hullCount ?? 4}</span>
               </div>
               <label className="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer pt-1">
                 <input
                   type="checkbox"
                   checked={showHitboxes}
                   onChange={() => toggleOverlay("showHitboxes")}
-                  className="accent-rose-400"
+                  
                 />
                 Show Unity PolygonCollider2D Hitboxes ({generateUnity2DColliders(project).length})
               </label>
@@ -926,7 +902,7 @@ export function LeftToolOptionsPane({
           <>
             <div className="p-3 rounded-2xl liquid-glass-well space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-emerald-300">
+                <span className="section-title">
                   Weight Paint Brush (B)
                 </span>
                 <button
@@ -954,7 +930,7 @@ export function LeftToolOptionsPane({
               <label className="block space-y-1">
                 <div className="flex justify-between text-[11px] text-slate-300">
                   <span>Brush Radius ([ / ])</span>
-                  <span className="font-mono text-white">{brushRadius} px</span>
+                  <span className="tabular-nums text-white">{brushRadius} px</span>
                 </div>
                 <input
                   type="range"
@@ -962,14 +938,14 @@ export function LeftToolOptionsPane({
                   max="180"
                   value={brushRadius}
                   onChange={(e) => setBrushRadius(parseFloat(e.target.value))}
-                  className="w-full accent-emerald-400"
+                  className="w-full"
                 />
               </label>
 
               <label className="block space-y-1">
                 <div className="flex justify-between text-[11px] text-slate-300">
                   <span>Brush Strength / Flow</span>
-                  <span className="font-mono text-white">{Math.round(brushStrength * 100)}%</span>
+                  <span className="tabular-nums text-white">{Math.round(brushStrength * 100)}%</span>
                 </div>
                 <input
                   type="range"
@@ -978,7 +954,7 @@ export function LeftToolOptionsPane({
                   step="0.05"
                   value={brushStrength}
                   onChange={(e) => setBrushStrength(parseFloat(e.target.value))}
-                  className="w-full accent-emerald-400"
+                  className="w-full"
                 />
               </label>
 
@@ -987,7 +963,7 @@ export function LeftToolOptionsPane({
                   type="checkbox"
                   checked={showHeatmap}
                   onChange={() => toggleOverlay("showHeatmap")}
-                  className="accent-emerald-400"
+                  
                 />
                 Show Live GPU Weight Heatmap Overlay
               </label>
@@ -995,7 +971,7 @@ export function LeftToolOptionsPane({
 
             {/* Target Bone Influence & Lock List */}
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
-              <span className="text-[11px] font-bold text-sky-300 block">
+              <span className="section-title">
                 Active Influence Bone & Locks
               </span>
               <div className="max-h-48 overflow-y-auto space-y-1 pr-0.5">
@@ -1041,10 +1017,10 @@ export function LeftToolOptionsPane({
           <>
             <div className="p-3 rounded-2xl liquid-glass-well space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-purple-300">
+                <span className="section-title">
                   Liquify FFD Sculpt Tool (W)
                 </span>
-                <span className="text-[10px] font-mono text-slate-400">
+                <span className="text-[10px] tabular-nums text-slate-400">
                   @{currentTime.toFixed(2)}s
                 </span>
               </div>
@@ -1066,7 +1042,7 @@ export function LeftToolOptionsPane({
               <label className="block space-y-1">
                 <div className="flex justify-between text-[11px] text-slate-300">
                   <span>Warp Brush Radius ([ / ])</span>
-                  <span className="font-mono text-white">{brushRadius} px</span>
+                  <span className="tabular-nums text-white">{brushRadius} px</span>
                 </div>
                 <input
                   type="range"
@@ -1074,14 +1050,14 @@ export function LeftToolOptionsPane({
                   max="180"
                   value={brushRadius}
                   onChange={(e) => setBrushRadius(parseFloat(e.target.value))}
-                  className="w-full accent-purple-400"
+                  className="w-full"
                 />
               </label>
 
               <label className="block space-y-1">
                 <div className="flex justify-between text-[11px] text-slate-300">
                   <span>Warp Pressure</span>
-                  <span className="font-mono text-white">{Math.round(brushStrength * 100)}%</span>
+                  <span className="tabular-nums text-white">{Math.round(brushStrength * 100)}%</span>
                 </div>
                 <input
                   type="range"
@@ -1090,7 +1066,7 @@ export function LeftToolOptionsPane({
                   step="0.05"
                   value={brushStrength}
                   onChange={(e) => setBrushStrength(parseFloat(e.target.value))}
-                  className="w-full accent-purple-400"
+                  className="w-full"
                 />
               </label>
 
@@ -1111,10 +1087,8 @@ export function LeftToolOptionsPane({
           <>
             <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-emerald-300">
-                  3-Way Unity & Spine 4.2 Exporter
-                </span>
-                <span className="text-[10px] font-mono text-sky-300">
+                <span className="section-title">Spine 4.2 · Unity · Sprite sheet</span>
+                <span className="text-[10px] tabular-nums text-sky-300">
                   {Object.keys(project.animations).length} Clips
                 </span>
               </div>
@@ -1122,24 +1096,24 @@ export function LeftToolOptionsPane({
               <button
                 onClick={() => void onShipToUnity()}
                 disabled={isExporting}
-                className="w-full py-2 rounded-full text-xs font-bold bg-gradient-to-b from-emerald-300 to-emerald-500 text-slate-950 shadow-[0_0_16px_rgba(52,211,153,0.45)] hover:brightness-110 transition disabled:opacity-50"
+                className={`w-full py-2 rounded-full text-xs font-semibold disabled:opacity-50 ${exportData ? "liquid-glass-button text-[var(--label)]" : "btn-primary"}`}
               >
-                {isExporting ? "Baking GPU Atlas & Sheets..." : "⚡ Build / Refresh Unity Bundle"}
+                {isExporting ? "Building…" : exportData ? "Rebuild Bundle" : "Build Bundle"}
               </button>
 
               {exportData && (
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
                   <button
                     onClick={onDownloadZip}
-                    className="py-1.5 px-2.5 rounded-full liquid-glass-active text-[11px] font-bold"
+                    className="py-1.5 px-2.5 rounded-full btn-primary text-[11px]"
                   >
-                    ⬇ Download .ZIP
+                    Download .zip
                   </button>
                   <button
                     onClick={onExportWebM}
-                    className="py-1.5 px-2.5 rounded-full liquid-glass-button text-amber-200 text-[11px] font-bold"
+                    className="py-1.5 px-2.5 rounded-full liquid-glass-button text-[var(--label)] text-[11px] font-semibold"
                   >
-                    🎥 Export .WebM
+                    Record .webm
                   </button>
                 </div>
               )}
@@ -1174,9 +1148,9 @@ export function LeftToolOptionsPane({
                     alt="Exported Atlas"
                     className="max-h-44 object-contain rounded-xl border border-white/10"
                   />
-                  <span className="text-[10px] font-mono text-slate-400">
+                  <span className="text-[10px] tabular-nums text-slate-400">
                     {exportTab === "sheet"
-                      ? `${project.id}-sheet.png (296 frames)`
+                      ? `${project.id}-sheet.png (${sheetFrameCount(exportData.spriteSheetJson)} frames)`
                       : `${project.id}.png (MaxRects Atlas)`}
                   </span>
                 </div>

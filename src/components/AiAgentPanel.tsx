@@ -19,10 +19,11 @@ const PROVIDERS: {
   modelBadge: string;
   accent: string;
 }[] = [
-  { id: "cursor", name: "Cursor", modelBadge: "Agent MCP", accent: "#38bdf8" },
-  { id: "claude", name: "Claude", modelBadge: "Sonnet 4.5", accent: "#f97316" },
-  { id: "chatgpt", name: "ChatGPT", modelBadge: "GPT-5 / o3", accent: "#10b981" },
-  { id: "grok", name: "Grok", modelBadge: "Grok 4", accent: "#a855f7" },
+  // "cursor" is the id of the offline, deterministic tool planner (kept for saved-session compatibility).
+  { id: "cursor", name: "Built-in", modelBadge: "Offline", accent: "#0a84ff" },
+  { id: "claude", name: "Claude", modelBadge: "Sonnet 5.5", accent: "#ff9f0a" },
+  { id: "chatgpt", name: "ChatGPT", modelBadge: "GPT-5 mini", accent: "#30d158" },
+  { id: "grok", name: "Grok", modelBadge: "Grok 4", accent: "#bf5af2" },
 ];
 
 const QUICK_PROMPTS: { label: string; prompt: string }[] = [
@@ -88,15 +89,8 @@ export function AiAgentPanel({
       id: "welcome",
       role: "assistant",
       provider: "cursor",
-      text: "Connected to **Kinetic Pro Live Tool Engine**. Switch between **Cursor**, **Claude**, **ChatGPT**, or **Grok** above—every prompt executes real tool calls on your layers, Delaunay meshes, bone weights, IK pins, and Unity exporter.",
+      text: "Describe a change to the rig and I'll apply it: meshes, weights, springs, IK and keyframes. The built-in planner works offline; add an API key to use Claude, ChatGPT or Grok.",
       timestamp: "Ready",
-      actions: [
-        {
-          tool: "configure_mesh_and_weights",
-          args: { part: "body", density: "medium", weightMode: "hybrid" },
-          summary: "MCP Bridge linked to 12 bones & 7 mesh layers",
-        },
-      ],
     },
   ]);
 
@@ -217,7 +211,9 @@ export function AiAgentPanel({
         id: `a-${Date.now()}`,
         role: "assistant",
         provider,
-        text: data.reply || "Executed studio tool actions.",
+        text:
+          (data.cloudError ? `Cloud model unavailable (${data.cloudError}). Used the built-in planner instead.\n\n` : "") +
+          (data.error ?? data.reply ?? "Executed studio tool actions."),
         actions,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
@@ -242,11 +238,11 @@ export function AiAgentPanel({
 
   return (
     <aside
-      className={`pointer-events-auto ${widthClass} rounded-[26px] liquid-glass flex flex-col overflow-hidden transition-all ${
+      className={`pointer-events-auto ${widthClass} rounded-[var(--radius-panel)] liquid-glass-pill flex flex-col overflow-hidden transition-all ${
         isShaded ? "shrink-0" : "flex-1 min-h-0"
       }`}
     >
-      {/* 1. AI Copilot Header & 4-Provider Switcher (Cursor, Claude, ChatGPT, Grok) */}
+      {/* Header and provider switcher */}
       <div className="p-3 border-b border-white/12 space-y-2.5 shrink-0">
         <div className="flex items-center justify-between gap-1.5">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -255,14 +251,14 @@ export function AiAgentPanel({
               style={{ backgroundColor: activeProviderMeta.accent, color: activeProviderMeta.accent }}
             />
             <span className="text-xs font-bold tracking-tight text-white truncate">AI Copilot</span>
-            <span className="text-[9.5px] px-2 py-0.5 rounded-full liquid-glass-well font-mono text-sky-300 shrink-0">
+            <span className="text-[10.5px] px-2 py-0.5 rounded-full liquid-glass-well text-[var(--label-2)] shrink-0">
               {activeProviderMeta.modelBadge}
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => setShowKeyConfig(!showKeyConfig)}
-              title="Configure API Keys / MCP Endpoint"
+              title="API key"
               className="px-2 py-0.5 rounded-full liquid-glass-button text-[10px] font-medium text-slate-300 hover:text-white"
             >
               {showKeyConfig ? "Hide Key" : "API"}
@@ -304,12 +300,12 @@ export function AiAgentPanel({
           })}
         </div>
 
-        {/* Optional API Key / Cursor MCP CLI Drawer */}
+        {/* Optional API key drawer */}
         {showKeyConfig && (
           <div className="p-2.5 rounded-2xl liquid-glass-well space-y-2 text-[11px]">
             <div className="flex items-center justify-between text-slate-300">
               <span className="font-semibold">{activeProviderMeta.name} API Key (Optional)</span>
-              <span className="text-[10px] text-emerald-300">Local Tool Engine Active</span>
+              <span className="text-[10px] text-[var(--label-3)]">Stays on this machine</span>
             </div>
             <input
               type="password"
@@ -318,9 +314,9 @@ export function AiAgentPanel({
               onChange={(e) => setApiKey(e.target.value)}
               className="w-full bg-white/8 border border-white/15 rounded-xl px-2.5 py-1 text-xs text-white placeholder:text-slate-500 focus:outline-none"
             />
-            <div className="text-[10px] text-slate-400 font-mono truncate">
-              CLI: spineforge-metal-cli export-all {project.id}
-            </div>
+            <p className="text-[10px] leading-snug text-[var(--label-3)]">
+              Leave blank to use the server&apos;s environment key, or the offline planner if none is set.
+            </p>
           </div>
         )}
       </div>
@@ -353,7 +349,7 @@ export function AiAgentPanel({
               >
                 <div className="flex items-center justify-between text-[10px] text-slate-400">
                   <span className="font-bold uppercase tracking-wider text-sky-300">
-                    {msg.role === "user" ? "You" : `${msg.provider.toUpperCase()} Agent`}
+                    {msg.role === "user" ? "You" : (PROVIDERS.find((p) => p.id === msg.provider)?.name ?? "Copilot")}
                   </span>
                   <span>{msg.timestamp}</span>
                 </div>
@@ -366,7 +362,7 @@ export function AiAgentPanel({
                     {msg.actions.map((act, i) => (
                       <div
                         key={i}
-                        className="px-2.5 py-1.5 rounded-xl bg-emerald-500/12 border border-emerald-400/25 text-[10.5px] font-mono text-emerald-200 flex items-center gap-2"
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-500/12 border border-emerald-400/25 text-[10.5px] tabular-nums text-emerald-200 flex items-center gap-2"
                       >
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
                         <span className="truncate">{act.summary}</span>

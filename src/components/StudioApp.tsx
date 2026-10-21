@@ -1,209 +1,290 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { RIG_BONE_PALETTE } from "@/core/schema";
 import { buildBrowserUnityExportBundle } from "@/exporters/browser-bundle-builder";
 import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
+import { BudgetPanel } from "./BudgetPanel";
 import { LeftToolOptionsPane, type ExportBundlePreviewData } from "./LeftToolOptionsPane";
 import { StudioViewport } from "./StudioViewport";
 import { UserManualModal } from "./UserManualModal";
 
-/** Crisp inline SVG icons for the Photoshop Left Tool Rail (Magic Wand, PSD, Unity Cube, AI Copilot, Layers, etc.) */
-function ToolRailIcon({ id }: { id: string }) {
-  switch (id) {
-    case "import":
-      return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-          <path d="M12 10v6" />
-          <path d="m9 13 3-3 3 3" />
-        </svg>
-      );
-    case "auto":
-      // Photoshop Magic Wand Icon
-      return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m15 4-1 1 6 6 1-1a2.83 2.83 0 1 0-4-4Z" />
-          <path d="m13 6-9.5 9.5a2.12 2.12 0 1 0 3 3L16 9" />
-          <path d="M6 2v3" />
-          <path d="M4.5 3.5h3" />
-          <path d="M20 15v3" />
-          <path d="M18.5 16.5h3" />
-        </svg>
-      );
-    case "animate":
-      return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m5 9-3 3 3 3" />
-          <path d="m9 5 3-3 3 3" />
-          <path d="m15 19-3 3-3-3" />
-          <path d="m19 9 3 3-3 3" />
-          <line x1="2" x2="22" y1="12" y2="12" />
-          <line x1="12" x2="12" y1="2" y2="22" />
-        </svg>
-      );
-    case "rig":
-      return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="6" cy="6" r="3" />
-          <circle cx="18" cy="18" r="3" />
-          <line x1="8.12" x2="15.88" y1="8.12" y2="15.88" />
-        </svg>
-      );
-    case "mesh":
-      return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <polygon points="12 2 2 19 22 19 12 2" />
-          <line x1="12" x2="12" y1="2" y2="19" />
-          <line x1="7" x2="17" y1="11" y2="11" />
-        </svg>
-      );
-    case "weights":
-      return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z" />
-          <path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7" />
-        </svg>
-      );
-    case "liquify":
-      return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
-          <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
-          <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
-        </svg>
-      );
-    case "export":
-      return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-          <path d="m3.3 7 8.7 5 8.7-5" />
-          <path d="M12 22V12" />
-        </svg>
-      );
-    case "copilot":
-      return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-        </svg>
-      );
-    case "layers":
-      return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <polygon points="12 2 2 7 12 12 22 7 12 2" />
-          <polyline points="2 17 12 22 22 17" />
-          <polyline points="2 12 12 17 22 12" />
-        </svg>
-      );
-    case "undo":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 7v6h6" />
-          <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
-        </svg>
-      );
-    case "redo":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 7v6h-6" />
-          <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
-        </svg>
-      );
-    case "showBones":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="7" cy="7" r="2.5" />
-          <circle cx="17" cy="17" r="2.5" />
-          <line x1="8.8" y1="8.8" x2="15.2" y2="15.2" />
-        </svg>
-      );
-    case "showMeshWireframe":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="12" y1="3" x2="12" y2="21" />
-          <line x1="3" y1="3" x2="21" y2="21" />
-        </svg>
-      );
-    case "showHeatmap":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2c1.5 3.5 4 5.5 4 9a4 4 0 1 1-8 0c0-2 1-3.5 2-5.5" />
-          <path d="M12 22a7 7 0 0 0 7-7c0-3.5-2-6-4-8" />
-        </svg>
-      );
-    case "showOnionSkin":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="9" cy="12" r="5" strokeDasharray="2 2" />
-          <circle cx="15" cy="12" r="5" />
-        </svg>
-      );
-    case "showMotionArcs":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 17C6 7 18 7 21 17" strokeDasharray="3 2" />
-          <circle cx="12" cy="9.5" r="2" />
-        </svg>
-      );
-    case "showSlashTrail":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 20C10 18 16 12 20 4" />
-          <path d="M9 21c5-2 9-6 12-12" />
-        </svg>
-      );
-    case "enable3DRelight":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2" />
-          <path d="M12 20v2" />
-          <path d="m4.93 4.93 1.41 1.41" />
-          <path d="m17.66 17.66 1.41 1.41" />
-          <path d="M2 12h2" />
-          <path d="M20 12h2" />
-        </svg>
-      );
-    case "showHitboxes":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="4 2" />
-          <circle cx="12" cy="12" r="2" />
-        </svg>
-      );
-    case "showSlotStage":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="2" y="4" width="20" height="16" rx="2" />
-          <line x1="9" y1="4" x2="9" y2="20" />
-          <line x1="15" y1="4" x2="15" y2="20" />
-          <line x1="2" y1="12" x2="22" y2="12" />
-        </svg>
-      );
-    case "isolatePart":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      );
-    case "help":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-          <path d="M12 17h.01" />
-        </svg>
-      );
-    default:
-      return null;
-  }
+/* ── Icons (SF Symbols-style line icons, 1.75 stroke on a 24 grid) ─────────────────────────── */
+
+const ICON_PATHS: Record<string, ReactNode> = {
+  import: (
+    <>
+      <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+      <path d="M12 10v6" />
+      <path d="m9 13 3-3 3 3" />
+    </>
+  ),
+  auto: (
+    <>
+      <path d="m15 4-1 1 6 6 1-1a2.83 2.83 0 1 0-4-4Z" />
+      <path d="m13 6-9.5 9.5a2.12 2.12 0 1 0 3 3L16 9" />
+      <path d="M6 2v3M4.5 3.5h3M20 15v3M18.5 16.5h3" />
+    </>
+  ),
+  animate: (
+    <>
+      <path d="m5 9-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3" />
+      <path d="M2 12h20M12 2v20" />
+    </>
+  ),
+  rig: (
+    <>
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="18" cy="18" r="3" />
+      <path d="M8.12 8.12 15.88 15.88" />
+    </>
+  ),
+  mesh: (
+    <>
+      <path d="M12 2 2 19h20L12 2Z" />
+      <path d="M12 2v17M7 11h10" />
+    </>
+  ),
+  weights: (
+    <>
+      <path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z" />
+      <path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7" />
+    </>
+  ),
+  liquify: (
+    <>
+      <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+      <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+      <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+    </>
+  ),
+  export: (
+    <>
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="m3.3 7 8.7 5 8.7-5M12 22V12" />
+    </>
+  ),
+  copilot: (
+    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+  ),
+  undo: (
+    <>
+      <path d="M3 7v6h6" />
+      <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+    </>
+  ),
+  redo: (
+    <>
+      <path d="M21 7v6h-6" />
+      <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+    </>
+  ),
+  sidebarLeft: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M9 4v16" />
+    </>
+  ),
+  sidebarRight: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M15 4v16" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  eyeOff: (
+    <>
+      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68M6.61 6.61A13.5 13.5 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.39-1.61" />
+      <path d="m2 2 20 20" />
+    </>
+  ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
+    </>
+  ),
+  play: <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z" fill="currentColor" stroke="none" />,
+  pause: (
+    <>
+      <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none" />
+      <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" />
+    </>
+  ),
+  keys: (
+    <>
+      <path d="M3 6h18M3 12h18M3 18h18" opacity="0.35" />
+      <path d="m8 4 2 2-2 2-2-2 2-2ZM15 10l2 2-2 2-2-2 2-2ZM11 16l2 2-2 2-2-2 2-2Z" fill="currentColor" />
+    </>
+  ),
+  chevronUp: <path d="m6 15 6-6 6 6" />,
+  chevronDown: <path d="m6 9 6 6 6-6" />,
+  check: <path d="M5 12.5 10 17.5 19 7" />,
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </>
+  ),
+  unlock: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 7.5-2" />
+    </>
+  ),
+  plus: <path d="M12 5v14M5 12h14" />,
+};
+
+function Icon({ name, size = 16 }: { name: string; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {ICON_PATHS[name]}
+    </svg>
+  );
 }
 
+/* ── Tool and view definitions ─────────────────────────────────────────────────────────────── */
+
+type ToolDef = { id: StudioMode; label: string; key: string };
+
+/** Tools grouped by workflow stage, top to bottom: set up → build the rig → animate → ship. */
+const TOOL_GROUPS: ToolDef[][] = [
+  [
+    { id: "import", label: "Import", key: "O" },
+    { id: "auto", label: "Auto Rig", key: "A" },
+  ],
+  [
+    { id: "rig", label: "Bones & IK", key: "P" },
+    { id: "mesh", label: "Mesh", key: "M" },
+    { id: "weights", label: "Weight Paint", key: "B" },
+  ],
+  [
+    { id: "animate", label: "Pose", key: "V" },
+    { id: "liquify", label: "Warp", key: "W" },
+  ],
+  [{ id: "export", label: "Export", key: "E" }],
+];
+
+const TOOL_LABEL: Record<StudioMode, string> = Object.fromEntries(
+  TOOL_GROUPS.flat().map((t) => [t.id, t.label]),
+) as Record<StudioMode, string>;
+
+type OverlayKey =
+  | "showBones"
+  | "showMeshWireframe"
+  | "showHeatmap"
+  | "showOnionSkin"
+  | "showMotionArcs"
+  | "showSlashTrail"
+  | "enable3DRelight"
+  | "showHitboxes"
+  | "showSlotStage"
+  | "isolatePart";
+
+const VIEW_GROUPS: { title: string; items: { key: OverlayKey; label: string }[] }[] = [
+  {
+    title: "Rig",
+    items: [
+      { key: "showBones", label: "Bones" },
+      { key: "showMeshWireframe", label: "Mesh Wireframe" },
+      { key: "showHeatmap", label: "Weight Heatmap" },
+      { key: "isolatePart", label: "Solo Selected Layer" },
+    ],
+  },
+  {
+    title: "Motion",
+    items: [
+      { key: "showOnionSkin", label: "Onion Skin" },
+      { key: "showMotionArcs", label: "Motion Arcs" },
+      { key: "showSlashTrail", label: "Weapon Trail" },
+    ],
+  },
+  {
+    title: "Stage",
+    items: [
+      { key: "showSlotStage", label: "Slot Reels" },
+      { key: "showHitboxes", label: "Hitboxes" },
+      { key: "enable3DRelight", label: "Normal-Map Lighting" },
+    ],
+  },
+];
+
+/* ── Small building blocks ─────────────────────────────────────────────────────────────────── */
+
+/** Closes a popover when the user clicks anywhere outside it or presses Escape. */
+function usePopover() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return { open, setOpen, ref };
+}
+
+function MenuRow({
+  label,
+  checked,
+  onClick,
+  trailing,
+}: {
+  label: string;
+  checked?: boolean;
+  onClick: () => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <button
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      onClick={onClick}
+      className="w-full flex items-center gap-2 h-7 px-2 rounded-[6px] text-[13px] text-left text-[var(--label)] hover:bg-[var(--accent)] hover:text-white transition-colors"
+    >
+      <span className="w-4 shrink-0 grid place-items-center">{checked ? <Icon name="check" size={14} /> : null}</span>
+      <span className="flex-1 truncate">{label}</span>
+      {trailing}
+    </button>
+  );
+}
+
+/* ── Studio shell ──────────────────────────────────────────────────────────────────────────── */
+
 export function StudioApp() {
+  const store = useStudioStore();
   const {
     project,
     mode,
@@ -213,16 +294,6 @@ export function StudioApp() {
     currentTime,
     isPlaying,
     playbackSpeed,
-    showBones,
-    showMeshWireframe,
-    showHeatmap,
-    showOnionSkin,
-    showMotionArcs,
-    showSlashTrail,
-    enable3DRelight,
-    showHitboxes,
-    showSlotStage,
-    isolatePart,
     brushRadius,
     lockedBones,
     hiddenParts,
@@ -249,46 +320,48 @@ export function StudioApp() {
     addAnimationEventAtCurrentTime,
     deleteAnimationEvent,
     bakeCurrentClipSprings,
-  } = useStudioStore();
+  } = store;
 
-  // Photoshop-style Hideable & Stackable Dock State
+  // Layout state. Copilot starts closed: the canvas is the content, panels are opt-in.
   const [leftPaneOpen, setLeftPaneOpen] = useState(true);
-  const [showLayersPane, setShowLayersPane] = useState(true);
-  const [layersShaded, setLayersShaded] = useState(false);
-  const [showAiCopilot, setShowAiCopilot] = useState(true);
-  // Stack Layers & AI Copilot vertically in a single column (Photoshop Dock style) vs side-by-side
-  const [stackRightDock, setStackRightDock] = useState(true);
-
-  const [layersTab, setLayersTab] = useState<"layers" | "bones" | "history">("layers");
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [showAiCopilot, setShowAiCopilot] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<"layers" | "bones" | "history" | "budget">("layers");
   const [dopeSheetExpanded, setDopeSheetExpanded] = useState(false);
-  const [timelineDock, setTimelineDock] = useState<"bottom" | "top">("bottom");
   const [eventType, setEventType] = useState("OnHit");
-
   const [newBoneName, setNewBoneName] = useState("");
   const [exportData, setExportData] = useState<ExportBundlePreviewData | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [showUserManual, setShowUserManual] = useState(false);
-  const [saveBadge, setSaveBadge] = useState<string>("Saved");
+  const [saveState, setSaveState] = useState<{ label: string; tone: "idle" | "busy" | "ok" | "local" }>({
+    label: "Saved",
+    tone: "ok",
+  });
+
+  const viewMenu = usePopover();
+  const transportMenu = usePopover();
 
   const currentBoneObj = project.bones.find((b) => b.name === selectedBone) ?? project.bones[0]!;
   const currentClipObj = project.animations[activeClip];
+  const clipDuration = currentClipObj?.duration ?? 2.4;
 
   const handleSaveProject = async () => {
-    setSaveBadge("Saving...");
+    setSaveState({ label: "Saving…", tone: "busy" });
     try {
       localStorage.setItem(`kinetic-pro:${project.id}`, JSON.stringify(project));
+    } catch {
+      // Storage full or blocked; the server save below still runs.
+    }
+    try {
       const res = await fetch("/api/save-project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project }),
       });
-      if (res.ok) {
-        setSaveBadge(`Saved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
-      } else {
-        setSaveBadge("Saved locally");
-      }
+      const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      setSaveState(res.ok ? { label: `Saved ${time}`, tone: "ok" } : { label: "Saved in browser only", tone: "local" });
     } catch {
-      setSaveBadge("Saved locally");
+      setSaveState({ label: "Saved in browser only", tone: "local" });
     }
   };
 
@@ -302,26 +375,17 @@ export function StudioApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project, format: "preview", sheetCellHeight: 192, sheetFps: 10 }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setExportData(data);
-      } else {
-        const fallback = await buildBrowserUnityExportBundle(project);
-        setExportData(fallback);
-      }
+      setExportData(res.ok ? await res.json() : await buildBrowserUnityExportBundle(project));
     } catch {
-      const fallback = await buildBrowserUnityExportBundle(project);
-      setExportData(fallback);
+      setExportData(await buildBrowserUnityExportBundle(project));
     } finally {
       setIsExporting(false);
     }
   };
 
-  // Clicking a tool in the Left Rail: if already active & open, toggles the left pane closed; otherwise opens it
-  const handleSelectLeftTool = (targetMode: StudioMode) => {
-    if (targetMode === "auto") {
-      runOneClickAutoRig();
-    }
+  // Selecting the active tool again hides its options; selecting another tool opens them.
+  const handleSelectTool = (targetMode: StudioMode) => {
+    if (targetMode === "auto") runOneClickAutoRig();
     if (targetMode === "export" && !exportData && !isExporting) {
       void handleRunExport();
       return;
@@ -334,39 +398,44 @@ export function StudioApp() {
     }
   };
 
-  // Single-key Photoshop shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
         void handleSaveProject();
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+      if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
         return;
       }
+      if (mod && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        void handleRunExport();
+        return;
+      }
+      if (mod || e.altKey) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
       const key = e.key.toLowerCase();
-      if (key === "o") handleSelectLeftTool("import");
-      else if (key === "a") handleSelectLeftTool("auto");
-      else if (key === "v") handleSelectLeftTool("animate");
-      else if (key === "p") handleSelectLeftTool("rig");
-      else if (key === "m") handleSelectLeftTool("mesh");
-      else if (key === "b") handleSelectLeftTool("weights");
-      else if (key === "w") handleSelectLeftTool("liquify");
-      else if (key === "e") handleSelectLeftTool("export");
-      else if (key === "c") setShowAiCopilot((v) => !v);
-      else if (key === "l") setShowLayersPane((v) => !v);
+      const tool = TOOL_GROUPS.flat().find((t) => t.key.toLowerCase() === key);
+      if (tool) {
+        handleSelectTool(tool.id);
+        return;
+      }
+      if (key === "c") setShowAiCopilot((v) => !v);
+      else if (key === "l" || key === "i") setInspectorOpen((v) => !v);
+      else if (key === "k") setDopeSheetExpanded((v) => !v);
       else if (e.key === "Tab") {
         e.preventDefault();
-        const anyOpen = leftPaneOpen || showLayersPane || showAiCopilot;
+        const anyOpen = leftPaneOpen || inspectorOpen || showAiCopilot;
         setLeftPaneOpen(!anyOpen);
-        setShowLayersPane(!anyOpen);
-        setShowAiCopilot(!anyOpen);
+        setInspectorOpen(!anyOpen);
+        if (anyOpen) setShowAiCopilot(false);
       } else if (e.key === "[") setBrushRadius(Math.max(15, brushRadius - 10));
       else if (e.key === "]") setBrushRadius(Math.min(180, brushRadius + 10));
       else if (e.key === "?" || e.key === "/") setShowUserManual((v) => !v);
@@ -374,18 +443,23 @@ export function StudioApp() {
       else if (e.key === " ") {
         e.preventDefault();
         setIsPlaying(!isPlaying);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        // Step one frame at the clip's frame rate.
+        const fps = currentClipObj?.fps ?? 24;
+        const next = currentTime + (e.key === "ArrowRight" ? 1 : -1) / fps;
+        setIsPlaying(false);
+        setCurrentTime(Math.max(0, Math.min(clipDuration, Number(next.toFixed(4)))));
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brushRadius, isPlaying, leftPaneOpen, mode, project, redo, showAiCopilot, showLayersPane, undo]);
+  }, [brushRadius, isPlaying, leftPaneOpen, inspectorOpen, showAiCopilot, mode, project, redo, undo, currentTime, clipDuration]);
 
   const handleDownloadZip = () => {
     if (!exportData?.zipBase64) return;
     const bytes = Uint8Array.from(atob(exportData.zipBase64), (c) => c.charCodeAt(0));
-    const blob = new Blob([bytes], { type: "application/zip" });
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = `${project.id}-unity-bundle.zip`;
@@ -397,17 +471,14 @@ export function StudioApp() {
     const glCanvas = document.querySelector("canvas") as HTMLCanvasElement | null;
     if (!glCanvas || typeof glCanvas.captureStream !== "function") return;
     const stream = glCanvas.captureStream(30);
-    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-      ? "video/webm;codecs=vp9"
-      : "video/webm";
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
     const recorder = new MediaRecorder(stream, { mimeType });
     const chunks: BlobPart[] = [];
     recorder.ondataavailable = (ev) => {
       if (ev.data.size > 0) chunks.push(ev.data);
     };
     recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType });
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(new Blob(chunks, { type: mimeType }));
       const a = document.createElement("a");
       a.href = url;
       a.download = `${project.id}-${activeClip}.webm`;
@@ -415,725 +486,553 @@ export function StudioApp() {
       URL.revokeObjectURL(url);
     };
     recorder.start();
-    const durMs = Math.round((project.animations[activeClip]?.duration ?? 2.0) * 1000);
     setTimeout(() => {
       if (recorder.state !== "inactive") recorder.stop();
-    }, durMs);
+    }, Math.round(clipDuration * 1000));
   };
 
   const reversedLayers = [...project.parts].reverse();
+  const overlayState = store as unknown as Record<OverlayKey, boolean>;
+  const activeOverlayCount = VIEW_GROUPS.flatMap((g) => g.items).filter((i) => overlayState[i.key]).length;
+  const saveDot =
+    saveState.tone === "ok" ? "#30d158" : saveState.tone === "busy" ? "#0a84ff" : saveState.tone === "local" ? "#ff9f0a" : "#8e8e93";
 
   return (
     <div className="relative h-screen w-screen overflow-hidden select-none">
-      {/* 1. Full-Bleed 100% Spatial Canvas Stage */}
+      {/* The canvas fills the window; every panel floats above it. */}
       <StudioViewport />
 
-      {/* 2. Photoshop Dockable, Stackable & Hideable Workspace (Supports Stacking Timeline at Top or Bottom) */}
-      <div
-        className={`fixed inset-0 z-20 pointer-events-none flex justify-between p-3 gap-2.5 ${
-          timelineDock === "top" ? "flex-col-reverse" : "flex-col"
-        }`}
-      >
-        <div className="flex-1 min-h-0 flex items-stretch justify-between gap-2.5">
-          {/* LEFT DOCK: [1. Unified Photoshop Vertical Tool Rail] + [2. Hideable/Stackable Tool Options Pane] */}
-          <div className="flex items-stretch gap-2.5 shrink-0">
-            {/* 1. Far-Left Unified Photoshop Vertical Tool Rail:
-                - Import PSD (top)
-                - Magic Wand 1-Click Auto-Rig (below Import PSD)
-                - Pose (V), Rig (P), Mesh (M), Brush (B), Warp (W)
-                - Export Unity (E)
-                - AI Copilot (C)
-                - Layers Dock Toggle (L) */}
-            {/* 1. Far-Left Unified 2-Column Photoshop Tool Palette:
-                Every tool AND every viewport/stage tool uses the exact same icon + label button format */}
-            <aside className="pointer-events-auto w-26 rounded-[26px] liquid-glass py-2.5 px-2 flex flex-col items-center justify-between shrink-0 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-1.5 w-full">
-                {(
-                  [
-                    {
-                      id: "import",
-                      sub: "PSD",
-                      label: "Import PSD / Cut PNG & Document Setup (O) — Click to open/hide pane",
-                    },
-                    {
-                      id: "auto",
-                      sub: "Auto",
-                      label: "Magic Wand 1-Click Auto-Rig & Visual Physics (A) — Click to open/hide pane",
-                    },
-                    {
-                      id: "animate",
-                      sub: "Pose V",
-                      label: "Move / Free Transform Pose Tool (V) — Click to open/hide pane",
-                    },
-                    {
-                      id: "rig",
-                      sub: "Rig P",
-                      label: "Bone & IK Pin Tool (P) — Click to open/hide pane",
-                    },
-                    {
-                      id: "mesh",
-                      sub: "Mesh M",
-                      label: "Puppet Warp Delaunay Mesh Tool (M) — Click to open/hide pane",
-                    },
-                    {
-                      id: "weights",
-                      sub: "Brush B",
-                      label: "GPU Weight Paint Brush Tool (B) — Click to open/hide pane",
-                    },
-                    {
-                      id: "liquify",
-                      sub: "Warp W",
-                      label: "Liquify FFD Vertex Sculpt Tool (W) — Click to open/hide pane",
-                    },
-                    {
-                      id: "export",
-                      sub: "Unity",
-                      label: "Export Unity & Spine 4.2 Bundle (E) — Click to open/hide pane",
-                    },
-                  ] as { id: StudioMode; sub: string; label: string }[]
-                ).map((tool) => {
-                  const active = mode === tool.id && leftPaneOpen;
-                  return (
-                    <button
-                      key={tool.id}
-                      onClick={() => handleSelectLeftTool(tool.id)}
-                      title={tool.label}
-                      className={`w-full h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
-                        active
-                          ? "liquid-glass-active"
-                          : tool.id === "auto"
-                            ? "liquid-glass-button text-amber-200 border-amber-400/35 hover:text-white"
-                            : tool.id === "export"
-                              ? "liquid-glass-button text-emerald-200 border-emerald-400/35 hover:text-white"
-                              : "liquid-glass-button text-slate-300 hover:text-white"
-                      }`}
-                    >
-                      <ToolRailIcon id={tool.id} />
-                      <span className="text-[7.5px] font-semibold tracking-tight leading-none">
-                        {tool.sub}
-                      </span>
-                    </button>
-                  );
-                })}
-
-                {/* Undo (⌘Z) & Redo (⇧⌘Z) Icon Buttons */}
-                <button
-                  onClick={undo}
-                  disabled={historyIndex <= 0}
-                  title="Undo (⌘Z)"
-                  className="w-full h-10 rounded-2xl liquid-glass-button text-sky-200 hover:text-white disabled:opacity-40 font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition"
-                >
-                  <ToolRailIcon id="undo" />
-                  <span className="text-[7.5px] font-semibold tracking-tight leading-none">Undo</span>
-                </button>
-
-                <button
-                  onClick={redo}
-                  disabled={historyIndex >= history.length - 1}
-                  title="Redo (⇧⌘Z)"
-                  className="w-full h-10 rounded-2xl liquid-glass-button text-sky-200 hover:text-white disabled:opacity-40 font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition"
-                >
-                  <ToolRailIcon id="redo" />
-                  <span className="text-[7.5px] font-semibold tracking-tight leading-none">Redo</span>
-                </button>
-
-                {/* AI Copilot & Layers Stack Dock Icon Buttons */}
-                <button
-                  onClick={() => setShowAiCopilot(!showAiCopilot)}
-                  title="Toggle AI Rigging Copilot Pane (C)"
-                  className={`w-full h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
-                    showAiCopilot
-                      ? "liquid-glass-active"
-                      : "liquid-glass-button text-purple-200 border-purple-400/35 hover:text-white"
-                  }`}
-                >
-                  <ToolRailIcon id="copilot" />
-                  <span className="text-[7.5px] font-semibold tracking-tight leading-none">Copilot</span>
-                </button>
-
-                <button
-                  onClick={() => setShowLayersPane(!showLayersPane)}
-                  title="Toggle Layers / Bones / History Pane (L)"
-                  className={`w-full h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
-                    showLayersPane
-                      ? "liquid-glass-active"
-                      : "liquid-glass-button text-slate-300 hover:text-white"
-                  }`}
-                >
-                  <ToolRailIcon id="layers" />
-                  <span className="text-[7.5px] font-semibold tracking-tight leading-none">Layers</span>
-                </button>
-
-                {/* All 10 Viewport & Stage Tools Rendered as Identical Top-Style Icon + Label Buttons */}
-                {(
-                  [
-                    { key: "showBones", short: "Bone", active: showBones },
-                    { key: "showMeshWireframe", short: "Grid", active: showMeshWireframe },
-                    { key: "showHeatmap", short: "Heat", active: showHeatmap },
-                    { key: "showOnionSkin", short: "Onion", active: showOnionSkin },
-                    { key: "showMotionArcs", short: "Arcs", active: showMotionArcs },
-                    { key: "showSlashTrail", short: "Trail", active: showSlashTrail },
-                    { key: "enable3DRelight", short: "3D Lit", active: enable3DRelight },
-                    { key: "showHitboxes", short: "Box2D", active: showHitboxes },
-                    { key: "showSlotStage", short: "Reels", active: showSlotStage },
-                    { key: "isolatePart", short: "Solo", active: isolatePart },
-                  ] as const
-                ).map((ov) => (
-                  <button
-                    key={ov.key}
-                    onClick={() => toggleOverlay(ov.key)}
-                    title={`Toggle ${ov.short}`}
-                    className={`w-full h-10 rounded-2xl font-bold text-xs flex flex-col items-center justify-center gap-0.5 transition ${
-                      ov.active
-                        ? "liquid-glass-active"
-                        : "liquid-glass-button text-slate-300 hover:text-white"
-                    }`}
-                  >
-                    <ToolRailIcon id={ov.key} />
-                    <span className="text-[7.5px] font-semibold tracking-tight leading-none">
-                      {ov.short}
-                    </span>
-                  </button>
-                ))}
-
-                {/* Question Mark (?) User Manual & Guided Tour Button at the Bottom of the Left Tools Pane */}
-                <button
-                  onClick={() => setShowUserManual(!showUserManual)}
-                  title="User Manual & Guided Tour (?)"
-                  className={`col-span-2 mx-auto w-10 h-10 rounded-full font-extrabold text-sm flex items-center justify-center transition ${
-                    showUserManual
-                      ? "liquid-glass-active"
-                      : "liquid-glass-button text-amber-200 border-amber-400/35 hover:text-white"
-                  }`}
-                >
-                  ?
-                </button>
-              </div>
-            </aside>
-
-            {/* 2. Hideable & Shadeable Left Tool Options Pane */}
-            {leftPaneOpen && (
-              <div className="flex flex-col gap-2.5 min-h-0">
-                <LeftToolOptionsPane
-                  onShipToUnity={handleRunExport}
-                  onHidePane={() => setLeftPaneOpen(false)}
-                  exportData={exportData}
-                  isExporting={isExporting}
-                  onDownloadZip={handleDownloadZip}
-                  onExportWebM={handleExportTransparentWebM}
-                />
-              </div>
-            )}
+      <div className="fixed inset-0 z-20 pointer-events-none flex flex-col gap-2 p-2.5">
+        {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+        <header className="relative z-30 pointer-events-auto material rounded-[var(--radius-panel)] h-12 px-2 flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1 w-[260px] shrink-0">
+            <div className="h-7 w-7 rounded-[8px] grid place-items-center bg-gradient-to-b from-[#3d9bff] to-[#0062cc] text-white text-[13px] font-bold ml-1 mr-2 shadow-sm">
+              K
+            </div>
+            <button
+              className="icon-btn"
+              aria-pressed={leftPaneOpen}
+              onClick={() => setLeftPaneOpen((v) => !v)}
+              data-tip="Tool Options"
+              data-tip-side="bottom"
+              aria-label="Toggle tool options"
+            >
+              <Icon name="sidebarLeft" size={17} />
+            </button>
+            <span className="w-px h-5 bg-[var(--separator-strong)] mx-1" />
+            <button className="icon-btn" onClick={undo} disabled={historyIndex <= 0} data-tip="Undo  ⌘Z" data-tip-side="bottom" aria-label="Undo">
+              <Icon name="undo" />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={redo}
+              disabled={historyIndex >= history.length - 1}
+              data-tip="Redo  ⇧⌘Z"
+              data-tip-side="bottom"
+              aria-label="Redo"
+            >
+              <Icon name="redo" />
+            </button>
           </div>
 
-          {/* Center Canvas Spacer */}
-          <div className="flex-1 pointer-events-none" />
-
-          {/* RIGHT DOCK: Stackable & Hideable Photoshop Panels (Layers / Bones / History + AI Copilot) */}
-          {(showLayersPane || showAiCopilot) && (
-            <div
-              className={`flex min-h-0 gap-2.5 shrink-0 ${
-                stackRightDock ? "flex-col w-80" : "flex-row items-stretch"
-              }`}
+          {/* Document title, centered like a macOS document window. */}
+          <div className="flex-1 min-w-0 flex flex-col items-center justify-center leading-tight">
+            <div className="text-[13px] font-semibold text-[var(--label)] truncate max-w-full">{project.title}</div>
+            <button
+              onClick={() => void handleSaveProject()}
+              className="flex items-center gap-1.5 text-[11px] text-[var(--label-2)] hover:text-[var(--label)] transition-colors"
+              data-tip="Save  ⌘S"
+              data-tip-side="bottom"
             >
-              {/* Panel A: Photoshop Layers / Bones / History Stack */}
-              {showLayersPane && (
-                <aside
-                  className={`pointer-events-auto ${
-                    stackRightDock ? "w-full" : "w-76"
-                  } rounded-[26px] liquid-glass flex flex-col overflow-hidden transition-all ${
-                    layersShaded ? "shrink-0" : "flex-1 min-h-0"
-                  }`}
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: saveDot }} />
+              {TOOL_LABEL[mode]} · {saveState.label}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-end gap-1 w-[260px] shrink-0">
+            <div className="relative" ref={viewMenu.ref}>
+              <button
+                className="icon-btn w-auto px-2 gap-1.5 text-[13px]"
+                aria-pressed={viewMenu.open}
+                aria-haspopup="menu"
+                onClick={() => viewMenu.setOpen((v) => !v)}
+                data-tip="Viewport overlays"
+                data-tip-side="bottom"
+              >
+                <Icon name="eye" />
+                <span className="tabular-nums text-[12px]">{activeOverlayCount}</span>
+              </button>
+              {viewMenu.open && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+6px)] w-60 material-thick rounded-[12px] p-1.5 animate-panel-in"
                 >
-                  {/* Panel Header with Undo/Redo, Save, Stack Toggle (📌), Shade (–), and Hide (×) */}
-                  <div className="p-2.5 border-b border-white/12 flex items-center justify-between gap-1.5 shrink-0">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#38bdf8] shrink-0" />
-                      <span className="font-bold text-xs text-white truncate">Layers & History</span>
+                  {VIEW_GROUPS.map((group, gi) => (
+                    <div key={group.title}>
+                      {gi > 0 && <div className="h-px bg-[var(--separator)] my-1 mx-2" />}
+                      <div className="px-2 pt-1 pb-0.5 text-[11px] font-semibold text-[var(--label-3)]">{group.title}</div>
+                      {group.items.map((item) => (
+                        <MenuRow
+                          key={item.key}
+                          label={item.label}
+                          checked={overlayState[item.key]}
+                          onClick={() => toggleOverlay(item.key)}
+                        />
+                      ))}
                     </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={undo}
-                        disabled={historyIndex <= 0}
-                        title="Undo (⌘Z)"
-                        className="px-2 py-0.5 rounded-full liquid-glass-button text-[10px] font-bold text-slate-200 disabled:opacity-35"
-                      >
-                        ↶
-                      </button>
-                      <button
-                        onClick={redo}
-                        disabled={historyIndex >= history.length - 1}
-                        title="Redo (⇧⌘Z)"
-                        className="px-2 py-0.5 rounded-full liquid-glass-button text-[10px] font-bold text-slate-200 disabled:opacity-35"
-                      >
-                        ↷
-                      </button>
-                      <button
-                        onClick={() => void handleSaveProject()}
-                        title="Save Project (⌘S)"
-                        className="px-2 py-0.5 rounded-full liquid-glass-button text-[10px] font-semibold text-sky-200"
-                      >
-                        {saveBadge}
-                      </button>
-                      <button
-                        onClick={() => setStackRightDock(!stackRightDock)}
-                        title={
-                          stackRightDock
-                            ? "Unstack Panels (View Side-by-Side)"
-                            : "Stack Panels Vertically (Photoshop Single-Column Dock)"
-                        }
-                        className="w-6 h-6 rounded-full liquid-glass-button text-[10px] font-bold text-amber-200 flex items-center justify-center"
-                      >
-                        {stackRightDock ? "⇄" : "⇅"}
-                      </button>
-                      <button
-                        onClick={() => setLayersShaded(!layersShaded)}
-                        title={layersShaded ? "Expand Layers Panel" : "Shade / Collapse Panel"}
-                        className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 flex items-center justify-center"
-                      >
-                        {layersShaded ? "▾" : "–"}
-                      </button>
-                      <button
-                        onClick={() => setShowLayersPane(false)}
-                        title="Hide Layers Panel to Tool Rail (L)"
-                        className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-300 hover:text-white flex items-center justify-center"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-
-                  {!layersShaded && (
-                    <div className="flex-1 flex flex-col min-h-0 p-3">
-                      <div className="grid grid-cols-3 p-0.5 rounded-full liquid-glass-well text-[11px] mb-2 shrink-0">
-                        <button
-                          onClick={() => setLayersTab("layers")}
-                          className={`whitespace-nowrap py-1 rounded-full font-semibold transition ${
-                            layersTab === "layers"
-                              ? "bg-white/20 text-white shadow-sm"
-                              : "text-slate-400 hover:text-white"
-                          }`}
-                        >
-                          Layers ({project.parts.length})
-                        </button>
-                        <button
-                          onClick={() => setLayersTab("bones")}
-                          className={`whitespace-nowrap py-1 rounded-full font-semibold transition ${
-                            layersTab === "bones"
-                              ? "bg-white/20 text-white shadow-sm"
-                              : "text-slate-400 hover:text-white"
-                          }`}
-                        >
-                          Bones ({project.bones.length})
-                        </button>
-                        <button
-                          onClick={() => setLayersTab("history")}
-                          className={`whitespace-nowrap py-1 rounded-full font-semibold transition ${
-                            layersTab === "history"
-                              ? "bg-white/20 text-white shadow-sm"
-                              : "text-slate-400 hover:text-white"
-                          }`}
-                        >
-                          History ({history.length})
-                        </button>
-                      </div>
-
-                      {layersTab === "layers" ? (
-                        <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
-                          {reversedLayers.map((part) => {
-                            const isSelected = part.name === selectedPart;
-                            const isHidden = hiddenParts.includes(part.name);
-                            const isSkinned = Boolean(part.skin && part.skin.length > 1);
-                            const vCount = part.mesh ? part.mesh.positions.length / 2 : 4;
-                            return (
-                              <div
-                                key={part.name}
-                                onClick={() => selectPart(part.name)}
-                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-2xl border text-xs cursor-pointer transition ${
-                                  isSelected
-                                    ? "bg-white/18 border-white/35 text-white shadow"
-                                    : "bg-white/5 border-white/8 text-slate-300 hover:bg-white/10"
-                                } ${isHidden ? "opacity-45" : ""}`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      togglePartVisibility(part.name);
-                                    }}
-                                    title={isHidden ? "Show Layer" : "Hide Layer"}
-                                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-                                      isHidden ? "bg-rose-500/25 text-rose-300" : "bg-white/10 text-sky-300"
-                                    }`}
-                                  >
-                                    {isHidden ? "–" : "●"}
-                                  </button>
-
-                                  <div className="min-w-0">
-                                    <div className="font-semibold truncate">{part.name}</div>
-                                    <div className="text-[10px] text-slate-400">
-                                      {vCount}v · {isSkinned ? `Mesh (${part.skin!.length}B)` : `Rigid (${part.bone})`}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      movePartLayerOrder(part.name, "up");
-                                    }}
-                                    title="Bring Forward (⌘])"
-                                    className="w-5 h-5 rounded-full liquid-glass-button text-[10px] flex items-center justify-center"
-                                  >
-                                    ↑
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      movePartLayerOrder(part.name, "down");
-                                    }}
-                                    title="Send Backward (⌘[)"
-                                    className="w-5 h-5 rounded-full liquid-glass-button text-[10px] flex items-center justify-center"
-                                  >
-                                    ↓
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : layersTab === "bones" ? (
-                        <div className="flex-1 flex flex-col min-h-0">
-                          <div className="flex-1 overflow-y-auto space-y-1 pr-0.5">
-                            {project.bones.map((bone, idx) => {
-                              const isSelected = bone.name === selectedBone;
-                              const isLocked = lockedBones.includes(bone.name);
-                              const col = bone.color ?? RIG_BONE_PALETTE[idx % RIG_BONE_PALETTE.length];
-                              return (
-                                <div
-                                  key={bone.name}
-                                  onClick={() => selectBone(bone.name)}
-                                  className={`flex items-center justify-between px-3 py-1.5 rounded-2xl text-xs cursor-pointer transition ${
-                                    isSelected
-                                      ? "bg-white/18 text-white border border-white/30"
-                                      : "hover:bg-white/8 text-slate-300 border border-transparent"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2 truncate">
-                                    <span
-                                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                                      style={{ backgroundColor: col }}
-                                    />
-                                    <span className="font-medium truncate">{bone.name}</span>
-                                    {bone.spring && (
-                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-200">
-                                        Spring
-                                      </span>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleBoneLock(bone.name);
-                                    }}
-                                    className={`text-[9px] px-2 py-0.5 rounded-full ${
-                                      isLocked ? "bg-rose-500/30 text-rose-200" : "bg-white/8 text-slate-400"
-                                    }`}
-                                  >
-                                    {isLocked ? "Locked" : "Free"}
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          <div className="mt-2 pt-2 border-t border-white/10 flex gap-1.5 shrink-0">
-                            <input
-                              type="text"
-                              placeholder="New bone..."
-                              value={newBoneName}
-                              onChange={(e) => setNewBoneName(e.target.value)}
-                              className="flex-1 min-w-0 liquid-glass-well rounded-full px-3 py-1 text-xs text-white focus:outline-none"
-                            />
-                            <button
-                              onClick={() => {
-                                if (!newBoneName.trim()) return;
-                                addBone(
-                                  currentBoneObj.name,
-                                  newBoneName,
-                                  Math.min(0.95, currentBoneObj.x + 0.05),
-                                  Math.max(0.05, currentBoneObj.y - 0.08),
-                                );
-                                setNewBoneName("");
-                              }}
-                              className="whitespace-nowrap px-3 py-1 rounded-full liquid-glass-button text-xs font-semibold text-sky-200"
-                            >
-                              + Add
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex-1 overflow-y-auto space-y-1 pr-0.5">
-                          {history.map((snap, idx) => {
-                            const isCurrent = idx === historyIndex;
-                            const isFuture = idx > historyIndex;
-                            return (
-                              <div
-                                key={snap.id}
-                                onClick={() => jumpToHistory(idx)}
-                                className={`flex items-center justify-between px-3 py-1.5 rounded-2xl text-xs cursor-pointer transition ${
-                                  isCurrent
-                                    ? "bg-sky-400/25 border border-sky-300/40 text-white font-semibold"
-                                    : isFuture
-                                      ? "opacity-40 hover:opacity-75 text-slate-400"
-                                      : "bg-white/5 hover:bg-white/10 text-slate-300"
-                                }`}
-                              >
-                                <span className="truncate">{snap.label}</span>
-                                <span className="text-[10px] font-mono text-slate-400 shrink-0 ml-2">
-                                  {snap.timestamp}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </aside>
-              )}
-
-              {/* Panel B: Stackable & Hideable AI Rigging Copilot Window */}
-              {showAiCopilot && (
-                <AiAgentPanel
-                  onTriggerExport={handleRunExport}
-                  onHidePane={() => setShowAiCopilot(false)}
-                  widthClass={stackRightDock ? "w-full" : "w-80"}
-                />
+                  ))}
+                </div>
               )}
             </div>
+            <button
+              className="icon-btn"
+              aria-pressed={showAiCopilot}
+              onClick={() => setShowAiCopilot((v) => !v)}
+              data-tip="Copilot  C"
+              data-tip-side="bottom"
+              aria-label="Toggle AI copilot"
+            >
+              <Icon name="copilot" />
+            </button>
+            <button
+              className="icon-btn"
+              aria-pressed={inspectorOpen}
+              onClick={() => setInspectorOpen((v) => !v)}
+              data-tip="Inspector  I"
+              data-tip-side="bottom"
+              aria-label="Toggle inspector"
+            >
+              <Icon name="sidebarRight" size={17} />
+            </button>
+            <button
+              className="icon-btn"
+              aria-pressed={showUserManual}
+              onClick={() => setShowUserManual((v) => !v)}
+              data-tip="Help  ?"
+              data-tip-side="bottom"
+              aria-label="Help"
+            >
+              <Icon name="help" />
+            </button>
+            <button
+              onClick={() => void handleRunExport()}
+              disabled={isExporting}
+              className="btn-primary h-8 px-4 ml-1 text-[13px]"
+              data-tip="Export bundle  ⌘E"
+              data-tip-side="bottom"
+            >
+              {isExporting ? "Exporting…" : "Export"}
+            </button>
+          </div>
+        </header>
+
+        {/* ── Work area ──────────────────────────────────────────────────────── */}
+        <div className="flex-1 min-h-0 flex items-stretch gap-2">
+          {/* Tool rail: grouped by workflow stage, labels on hover. */}
+          <nav
+            aria-label="Tools"
+            className="pointer-events-auto material rounded-[var(--radius-panel)] w-12 py-2 flex flex-col items-center gap-1 shrink-0 self-start"
+          >
+            {TOOL_GROUPS.map((group, gi) => (
+              <div key={gi} className="flex flex-col items-center gap-1">
+                {gi > 0 && <span className="w-6 h-px bg-[var(--separator-strong)] my-1" />}
+                {group.map((tool) => (
+                  <button
+                    key={tool.id}
+                    onClick={() => handleSelectTool(tool.id)}
+                    className="icon-btn h-9 w-9"
+                    aria-pressed={mode === tool.id}
+                    aria-label={tool.label}
+                    data-tip={`${tool.label}  ${tool.key}`}
+                    data-tip-side="right"
+                  >
+                    <Icon name={tool.id} size={18} />
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
+
+          {leftPaneOpen && (
+            <div className="flex flex-col min-h-0 animate-panel-in">
+              <LeftToolOptionsPane
+                onShipToUnity={handleRunExport}
+                onHidePane={() => setLeftPaneOpen(false)}
+                exportData={exportData}
+                isExporting={isExporting}
+                onDownloadZip={handleDownloadZip}
+                onExportWebM={handleExportTransparentWebM}
+              />
+            </div>
+          )}
+
+          <div className="flex-1" />
+
+          {/* Inspector */}
+          {inspectorOpen && (
+            <aside
+              aria-label="Inspector"
+              className="pointer-events-auto material rounded-[var(--radius-panel)] w-[300px] flex flex-col min-h-0 shrink-0 animate-panel-in"
+            >
+              <div className="p-2.5 shrink-0">
+                <div className="segmented" role="tablist">
+                  {(
+                    [
+                      ["layers", "Layers"],
+                      ["bones", "Bones"],
+                      ["history", "History"],
+                      ["budget", "Budget"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button key={id} role="tab" aria-pressed={inspectorTab === id} onClick={() => setInspectorTab(id)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 flex flex-col px-2.5 pb-2.5">
+                {inspectorTab === "layers" && (
+                  <ul className="flex-1 overflow-y-auto space-y-0.5">
+                    {reversedLayers.map((part) => {
+                      const isSelected = part.name === selectedPart;
+                      const isHidden = hiddenParts.includes(part.name);
+                      const isSkinned = Boolean(part.skin && part.skin.length > 1);
+                      const vCount = part.mesh ? part.mesh.positions.length / 2 : 4;
+                      return (
+                        <li
+                          key={part.name}
+                          onClick={() => selectPart(part.name)}
+                          className={`group flex items-center gap-2 min-h-11 py-1.5 px-2 rounded-[8px] cursor-default transition-colors ${
+                            isSelected ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--fill-3)]"
+                          } ${isHidden ? "opacity-50" : ""}`}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePartVisibility(part.name);
+                            }}
+                            aria-label={isHidden ? `Show ${part.name}` : `Hide ${part.name}`}
+                            className={`h-6 w-6 grid place-items-center rounded-[6px] shrink-0 ${
+                              isSelected ? "text-white/90" : "text-[var(--label-2)]"
+                            } hover:bg-white/10`}
+                          >
+                            <Icon name={isHidden ? "eyeOff" : "eye"} size={14} />
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[13px] leading-tight truncate">{part.name}</div>
+                            <div className={`text-[11px] leading-tight mt-0.5 truncate ${isSelected ? "text-white/70" : "text-[var(--label-3)]"}`}>
+                              {isSkinned ? `Mesh · ${vCount} verts · ${part.skin!.length} bones` : `Rigid · ${part.bone}`}
+                            </div>
+                          </div>
+                          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                movePartLayerOrder(part.name, "up");
+                              }}
+                              aria-label="Bring forward"
+                              className="h-6 w-6 grid place-items-center rounded-[6px] hover:bg-white/10"
+                            >
+                              <Icon name="chevronUp" size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                movePartLayerOrder(part.name, "down");
+                              }}
+                              aria-label="Send backward"
+                              className="h-6 w-6 grid place-items-center rounded-[6px] hover:bg-white/10"
+                            >
+                              <Icon name="chevronDown" size={14} />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {inspectorTab === "bones" && (
+                  <>
+                    <ul className="flex-1 overflow-y-auto space-y-0.5">
+                      {project.bones.map((bone, idx) => {
+                        const isSelected = bone.name === selectedBone;
+                        const isLocked = lockedBones.includes(bone.name);
+                        const col = bone.color ?? RIG_BONE_PALETTE[idx % RIG_BONE_PALETTE.length];
+                        return (
+                          <li
+                            key={bone.name}
+                            onClick={() => selectBone(bone.name)}
+                            className={`group flex items-center gap-2 h-8 px-2 rounded-[8px] cursor-default transition-colors ${
+                              isSelected ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--fill-3)]"
+                            }`}
+                          >
+                            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: col }} />
+                            <span className="text-[13px] truncate flex-1">{bone.name}</span>
+                            {bone.spring && (
+                              <span className={`text-[11px] ${isSelected ? "text-white/75" : "text-[var(--label-3)]"}`}>Physics</span>
+                            )}
+                            {bone.follow && (
+                              <span className={`text-[11px] ${isSelected ? "text-white/75" : "text-[var(--label-3)]"}`}>Follow</span>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleBoneLock(bone.name);
+                              }}
+                              aria-label={isLocked ? `Unlock ${bone.name}` : `Lock ${bone.name}`}
+                              className={`h-6 w-6 grid place-items-center rounded-[6px] hover:bg-white/10 ${
+                                isLocked ? (isSelected ? "text-white" : "text-[#ff9f0a]") : "opacity-0 group-hover:opacity-100"
+                              }`}
+                            >
+                              <Icon name={isLocked ? "lock" : "unlock"} size={13} />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <form
+                      className="mt-2 pt-2 border-t border-[var(--separator)] flex gap-1.5 shrink-0"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!newBoneName.trim()) return;
+                        addBone(
+                          currentBoneObj.name,
+                          newBoneName,
+                          Math.min(0.95, currentBoneObj.x + 0.05),
+                          Math.max(0.05, currentBoneObj.y - 0.08),
+                        );
+                        setNewBoneName("");
+                      }}
+                    >
+                      <input
+                        type="text"
+                        placeholder={`New bone under ${currentBoneObj.name}`}
+                        value={newBoneName}
+                        onChange={(e) => setNewBoneName(e.target.value)}
+                        className="flex-1 min-w-0 h-7 rounded-[6px] bg-[var(--fill-3)] border border-[var(--separator)] px-2 text-[12px] placeholder:text-[var(--label-3)] focus:outline-none focus:border-[var(--accent)]"
+                      />
+                      <button type="submit" className="icon-btn h-7 w-7" aria-label="Add bone" disabled={!newBoneName.trim()}>
+                        <Icon name="plus" size={15} />
+                      </button>
+                    </form>
+                  </>
+                )}
+
+                {inspectorTab === "history" && (
+                  <ul className="flex-1 overflow-y-auto space-y-0.5">
+                    {history.map((snap, idx) => {
+                      const isCurrent = idx === historyIndex;
+                      const isFuture = idx > historyIndex;
+                      return (
+                        <li
+                          key={snap.id}
+                          onClick={() => jumpToHistory(idx)}
+                          className={`flex items-center justify-between gap-2 h-8 px-2 rounded-[8px] cursor-default transition-colors ${
+                            isCurrent ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--fill-3)]"
+                          } ${isFuture ? "opacity-40" : ""}`}
+                        >
+                          <span className="text-[13px] truncate">{snap.label}</span>
+                          <span className={`text-[11px] tabular-nums shrink-0 ${isCurrent ? "text-white/70" : "text-[var(--label-3)]"}`}>
+                            {snap.timestamp}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {inspectorTab === "budget" && <BudgetPanel />}
+              </div>
+            </aside>
           )}
         </div>
 
-        {/* TIMELINE & DOPE SHEET DOCK (Can be stacked at the Top or Bottom of the Application) */}
+        {/* ── Transport & timeline ───────────────────────────────────────────── */}
         <footer
-          className={`pointer-events-auto rounded-[28px] liquid-glass transition-all duration-300 flex flex-col overflow-hidden shrink-0 ${
-            dopeSheetExpanded ? "h-56" : "h-14"
+          className={`relative z-20 pointer-events-auto material rounded-[var(--radius-panel)] flex flex-col shrink-0 transition-[height] duration-300 ${
+            dopeSheetExpanded ? "h-60" : "h-12"
           }`}
         >
-          <div className="px-3.5 h-14 flex items-center justify-between gap-2 text-xs shrink-0">
-            {/* Left Transport + Stack Top/Bottom Button + Clip Selector */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className={`whitespace-nowrap shrink-0 px-3.5 py-1.5 rounded-full font-bold transition ${
-                  isPlaying
-                    ? "bg-amber-400 text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.5)]"
-                    : "liquid-glass-active"
-                }`}
-              >
-                {isPlaying ? "Pause" : "Play"}
-              </button>
+          <div className="h-12 px-2 flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setIsPlaying(!isPlaying)}
+              className="h-8 w-8 grid place-items-center rounded-full bg-[var(--fill)] hover:bg-[var(--fill)]/80 text-[var(--label)] transition-colors"
+              aria-label={isPlaying ? "Pause" : "Play"}
+              data-tip={isPlaying ? "Pause  Space" : "Play  Space"}
+              data-tip-side="top"
+            >
+              <Icon name={isPlaying ? "pause" : "play"} size={14} />
+            </button>
 
-              <button
-                onClick={() => setTimelineDock(timelineDock === "bottom" ? "top" : "bottom")}
-                title={
-                  timelineDock === "bottom"
-                    ? "Stack Timeline Bar on Top of Application"
-                    : "Stack Timeline Bar at Bottom of Application"
-                }
-                className="whitespace-nowrap shrink-0 px-2.5 py-1.5 rounded-full liquid-glass-button text-[11px] font-bold text-cyan-200 border-cyan-400/35 hover:text-white"
-              >
-                {timelineDock === "bottom" ? "↑ Stack Top" : "↓ Stack Bottom"}
-              </button>
+            <select
+              value={activeClip}
+              onChange={(e) => setActiveClip(e.target.value)}
+              aria-label="Animation clip"
+              className="h-7 max-w-[180px] rounded-[6px] bg-[var(--fill-3)] border border-[var(--separator)] px-2 text-[12px] font-medium text-[var(--label)] focus:outline-none"
+            >
+              {Object.keys(project.animations).map((clipName) => (
+                <option key={clipName} value={clipName}>
+                  {clipName}
+                </option>
+              ))}
+            </select>
 
-              <div className="flex items-center gap-1 p-1 rounded-full liquid-glass-well shrink-0">
-                <select
-                  value={activeClip}
-                  onChange={(e) => setActiveClip(e.target.value)}
-                  className="bg-transparent px-2 py-0.5 text-[11px] font-bold text-sky-300 focus:outline-none cursor-pointer"
-                >
-                  {Object.keys(project.animations).map((clipName) => (
-                    <option key={clipName} value={clipName} className="bg-slate-950 text-white">
-                      Clip: {clipName} ({project.animations[clipName]!.duration}s)
-                    </option>
-                  ))}
-                </select>
-                <div className="hidden 2xl:flex items-center gap-1">
-                  {(["idle", "anticipation", "strike", "zeus-bolt", "symbol-win"] as const).map(
-                    (clipName) =>
-                      project.animations[clipName] ? (
-                        <button
-                          key={clipName}
-                          onClick={() => setActiveClip(clipName)}
-                          className={`whitespace-nowrap shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize transition ${
-                            activeClip === clipName
-                              ? "bg-white/22 text-white shadow-sm"
-                              : "text-slate-400 hover:text-white"
-                          }`}
-                        >
-                          {clipName}
-                        </button>
-                      ) : null,
-                  )}
-                </div>
-              </div>
+            {/* Scrubber with event markers */}
+            <div className="relative flex-1 min-w-[120px] flex items-center px-1">
+              <input
+                type="range"
+                min={0}
+                max={clipDuration}
+                step={0.001}
+                value={currentTime}
+                aria-label="Playhead"
+                onChange={(e) => {
+                  setIsPlaying(false);
+                  setCurrentTime(parseFloat(e.target.value));
+                }}
+                className="w-full cursor-pointer"
+              />
+              {(currentClipObj?.events ?? []).map((ev, idx) => {
+                const pct = Math.max(0, Math.min(100, (ev.time / clipDuration) * 100));
+                return (
+                  <button
+                    key={`${ev.name}-${idx}`}
+                    onClick={() => {
+                      setIsPlaying(false);
+                      setCurrentTime(ev.time);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      deleteAnimationEvent(ev.time, ev.name);
+                    }}
+                    data-tip={`${ev.name} · ${ev.time.toFixed(2)}s · right-click to remove`}
+                    data-tip-side="top"
+                    style={{ left: `${pct}%` }}
+                    className="absolute top-0 -translate-x-1/2 h-2 w-2 rotate-45 rounded-[1px] bg-[#ff9f0a] hover:scale-125 transition-transform"
+                    aria-label={`Event ${ev.name}`}
+                  />
+                );
+              })}
             </div>
 
-            {/* Center Scrubber + Unity Event Markers Overlay */}
-            <div className="flex-1 flex items-center gap-2.5 min-w-[120px] px-1">
-              <div className="relative flex-1 flex items-center">
-                <input
-                  type="range"
-                  min={0}
-                  max={currentClipObj?.duration ?? 2.4}
-                  step={0.01}
-                  value={currentTime}
-                  onChange={(e) => {
-                    setIsPlaying(false);
-                    setCurrentTime(parseFloat(e.target.value));
-                  }}
-                  className="w-full accent-sky-300 cursor-pointer"
-                />
-                {(currentClipObj?.events ?? []).map((ev, idx) => {
-                  const pct = Math.max(0, Math.min(100, (ev.time / (currentClipObj?.duration ?? 2.4)) * 100));
-                  return (
-                    <button
-                      key={`${ev.name}-${idx}`}
-                      onClick={() => {
-                        setIsPlaying(false);
-                        setCurrentTime(ev.time);
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        deleteAnimationEvent(ev.time, ev.name);
-                      }}
-                      title={`Unity AnimationEvent: ${ev.name} (${ev.stringParam ?? ""}) @ ${ev.time}s — Right-click to remove`}
-                      style={{ left: `${pct}%` }}
-                      className="absolute -top-2.5 -translate-x-1/2 px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[8px] font-extrabold shadow"
-                    >
-                      ⚡{ev.name}
-                    </button>
-                  );
-                })}
-              </div>
-              <span className="font-mono text-[11px] text-slate-300 whitespace-nowrap shrink-0">
-                <strong className="text-white">{currentTime.toFixed(2)}s</strong> /{" "}
-                {(currentClipObj?.duration ?? 2.4).toFixed(1)}s
-              </span>
-            </div>
+            <span className="text-[12px] tabular-nums text-[var(--label-2)] whitespace-nowrap w-[92px] text-right">
+              <span className="text-[var(--label)]">{currentTime.toFixed(2)}</span> / {clipDuration.toFixed(2)} s
+            </span>
 
-            {/* Right Controls: Event Trigger, Speed, Bake, Dope Sheet & Stack Top/Bottom */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <div className="flex items-center gap-1 liquid-glass-well rounded-full px-2 py-0.5 shrink-0">
-                <select
-                  value={eventType}
-                  onChange={(e) => setEventType(e.target.value)}
-                  className="bg-transparent text-[10.5px] text-amber-200 font-semibold focus:outline-none"
-                >
-                  <option value="OnHit" className="bg-slate-950">⚡ OnHit</option>
-                  <option value="SpawnVFX" className="bg-slate-950">✨ SpawnVFX</option>
-                  <option value="PlaySFX" className="bg-slate-950">🔊 PlaySFX</option>
-                  <option value="CameraShake" className="bg-slate-950">💥 Shake</option>
-                </select>
-                <button
-                  onClick={() => addAnimationEventAtCurrentTime(eventType, `fx_${activeClip}_${eventType.toLowerCase()}`, 1.0)}
-                  title="Add Unity AnimationEvent & Spine Event at Playhead"
-                  className="px-2 py-0.5 rounded-full bg-amber-400/25 text-amber-200 text-[10px] font-bold hover:bg-amber-400/40"
-                >
-                  + Event
+            <div className="segmented shrink-0" role="group" aria-label="Playback speed">
+              {[0.25, 0.5, 1].map((s) => (
+                <button key={s} aria-pressed={playbackSpeed === s} onClick={() => setPlaybackSpeed(s)}>
+                  {s === 1 ? "1×" : `${s}×`}
                 </button>
-              </div>
+              ))}
+            </div>
 
-              <select
-                value={playbackSpeed}
-                onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
-                className="liquid-glass-well rounded-full px-2 py-1 text-[10.5px] text-slate-200 shrink-0"
-              >
-                <option value={0.25} className="bg-slate-950">0.25×</option>
-                <option value={0.5} className="bg-slate-950">0.5×</option>
-                <option value={1} className="bg-slate-950">1.0×</option>
-                <option value={1.5} className="bg-slate-950">1.5×</option>
-              </select>
+            <button
+              className="icon-btn"
+              aria-pressed={dopeSheetExpanded}
+              onClick={() => setDopeSheetExpanded(!dopeSheetExpanded)}
+              data-tip="Keyframes  K"
+              data-tip-side="top"
+              aria-label="Toggle keyframe sheet"
+            >
+              <Icon name="keys" size={17} />
+            </button>
 
+            <div className="relative" ref={transportMenu.ref}>
               <button
-                onClick={bakeCurrentClipSprings}
-                className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[10.5px] font-semibold text-amber-200"
+                className="icon-btn"
+                aria-pressed={transportMenu.open}
+                aria-haspopup="menu"
+                onClick={() => transportMenu.setOpen((v) => !v)}
+                data-tip="More"
+                data-tip-side="top"
+                aria-label="More timeline actions"
               >
-                Bake
+                <Icon name="more" size={17} />
               </button>
-
-              <button
-                onClick={() => setDopeSheetExpanded(!dopeSheetExpanded)}
-                className={`whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full text-[10.5px] font-semibold transition ${
-                  dopeSheetExpanded
-                    ? "liquid-glass-active"
-                    : "liquid-glass-button text-sky-200"
-                }`}
-              >
-                Dope Sheet
-              </button>
-
-              <button
-                onClick={() => setTimelineDock(timelineDock === "bottom" ? "top" : "bottom")}
-                title={
-                  timelineDock === "bottom"
-                    ? "Stack Timeline Bar on Top of Application"
-                    : "Stack Timeline Bar at Bottom of Application"
-                }
-                className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[10.5px] font-bold text-cyan-200 hover:text-white"
-              >
-                {timelineDock === "bottom" ? "↑ Top" : "↓ Bottom"}
-              </button>
+              {transportMenu.open && (
+                <div role="menu" className="absolute right-0 bottom-[calc(100%+8px)] w-64 material-thick rounded-[12px] p-1.5 animate-panel-in">
+                  <div className="px-2 pt-1 pb-1 text-[11px] font-semibold text-[var(--label-3)]">Add event at playhead</div>
+                  <div className="flex gap-1.5 px-1 pb-1.5">
+                    <select
+                      value={eventType}
+                      onChange={(e) => setEventType(e.target.value)}
+                      aria-label="Event type"
+                      className="flex-1 h-7 rounded-[6px] bg-[var(--fill-3)] border border-[var(--separator)] px-2 text-[12px]"
+                    >
+                      <option value="OnHit">OnHit</option>
+                      <option value="SpawnVFX">SpawnVFX</option>
+                      <option value="PlaySFX">PlaySFX</option>
+                      <option value="CameraShake">CameraShake</option>
+                    </select>
+                    <button
+                      className="btn-primary h-7 px-3 text-[12px]"
+                      onClick={() => {
+                        addAnimationEventAtCurrentTime(eventType, `fx_${activeClip}_${eventType.toLowerCase()}`, 1.0);
+                        transportMenu.setOpen(false);
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <div className="h-px bg-[var(--separator)] my-1 mx-2" />
+                  <MenuRow
+                    label="Bake physics into keys"
+                    onClick={() => {
+                      bakeCurrentClipSprings();
+                      transportMenu.setOpen(false);
+                    }}
+                  />
+                  <MenuRow label="1.5× playback" checked={playbackSpeed === 1.5} onClick={() => setPlaybackSpeed(1.5)} />
+                </div>
+              )}
             </div>
           </div>
 
           {dopeSheetExpanded && (
-            <div className="flex-1 overflow-y-auto px-5 pb-3 space-y-1 border-t border-white/10 pt-2">
+            <div className="flex-1 overflow-y-auto px-3 pb-2 pt-1 border-t border-[var(--separator)]">
               {project.bones.map((bone, idx) => {
                 const keys = currentClipObj?.boneTracks[bone.name] ?? [];
-                const duration = currentClipObj?.duration ?? 2.4;
                 const col = bone.color ?? RIG_BONE_PALETTE[idx % RIG_BONE_PALETTE.length];
+                const isSelected = bone.name === selectedBone;
                 return (
                   <div
                     key={bone.name}
                     onClick={() => selectBone(bone.name)}
-                    className={`flex items-center gap-3 h-5 rounded-lg px-2 ${
-                      bone.name === selectedBone ? "bg-white/12" : "hover:bg-white/5"
-                    }`}
+                    className={`flex items-center gap-3 h-6 rounded-[6px] px-2 ${isSelected ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--fill-3)]"}`}
                   >
-                    <span className="w-28 text-[11px] font-mono truncate shrink-0 flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: col }} />
+                    <span className="w-32 text-[12px] truncate shrink-0 flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: col }} />
                       {bone.name}
                     </span>
-                    <div className="relative flex-1 h-3 rounded-full liquid-glass-well">
+                    <div className="relative flex-1 h-full">
+                      <div className="absolute inset-x-0 top-1/2 h-px bg-[var(--separator)]" />
                       <div
-                        className="absolute top-0 bottom-0 w-0.5 bg-sky-300/80 pointer-events-none"
-                        style={{ left: `${Math.min(100, (currentTime / duration) * 100)}%` }}
+                        className="absolute top-0 bottom-0 w-px bg-[var(--accent)] pointer-events-none"
+                        style={{ left: `${Math.min(100, (currentTime / clipDuration) * 100)}%` }}
                       />
-                      {keys.map((k, kIdx) => {
-                        const leftPct = Math.max(0, Math.min(100, (k.time / duration) * 100));
-                        return (
-                          <button
-                            key={kIdx}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (e.altKey) {
-                                deleteBoneKeyframe(bone.name, k.time);
-                              } else {
-                                setIsPlaying(false);
-                                setCurrentTime(k.time);
-                                selectBone(bone.name);
-                              }
-                            }}
-                            title={`${bone.name} @ ${k.time}s (r=${k.r ?? 0}°) — Alt+Click to delete`}
-                            style={{ left: `${leftPct}%` }}
-                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-2.5 w-2.5 rotate-45 bg-cyan-300 hover:bg-white shadow-[0_0_8px_#67e8f9] border border-slate-950"
-                          />
-                        );
-                      })}
+                      {keys.map((k, kIdx) => (
+                        <button
+                          key={kIdx}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (e.altKey) deleteBoneKeyframe(bone.name, k.time);
+                            else {
+                              setIsPlaying(false);
+                              setCurrentTime(k.time);
+                              selectBone(bone.name);
+                            }
+                          }}
+                          title={`${bone.name} · ${k.time.toFixed(2)}s · ${k.curve === "stepped" ? "stepped" : Array.isArray(k.curve) ? "eased" : "linear"} · ⌥-click to delete`}
+                          style={{ left: `${Math.max(0, Math.min(100, (k.time / clipDuration) * 100))}%` }}
+                          className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-2 w-2 rotate-45 rounded-[1px] transition-transform hover:scale-150 ${
+                            Array.isArray(k.curve) ? "bg-[var(--accent-hover)]" : "bg-[var(--label-2)]"
+                          }`}
+                          aria-label={`Keyframe ${bone.name} at ${k.time.toFixed(2)} seconds`}
+                        />
+                      ))}
                     </div>
                   </div>
                 );
@@ -1143,12 +1042,16 @@ export function StudioApp() {
         </footer>
       </div>
 
-      {/* Interactive User Manual & Step-by-Step Guided Tour Modal */}
-      <UserManualModal
-        isOpen={showUserManual}
-        onClose={() => setShowUserManual(false)}
-        onTriggerExport={handleRunExport}
-      />
+      {/* Copilot floats above the canvas so it never squeezes the inspector. */}
+      {showAiCopilot && (
+        <div
+          className={`fixed z-30 ${inspectorOpen ? "right-[318px]" : "right-2.5"} ${dopeSheetExpanded ? "bottom-[258px] h-[min(520px,calc(100vh-330px))]" : "bottom-[66px] h-[min(560px,calc(100vh-140px))]"} w-[360px] flex flex-col animate-panel-in`}
+        >
+          <AiAgentPanel onTriggerExport={handleRunExport} onHidePane={() => setShowAiCopilot(false)} widthClass="w-full" />
+        </div>
+      )}
+
+      <UserManualModal isOpen={showUserManual} onClose={() => setShowUserManual(false)} onTriggerExport={handleRunExport} />
     </div>
   );
 }
