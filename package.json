@@ -4,9 +4,9 @@
   "private": true,
   "description": "Kinetic Pro — Apple Metal 2D Mesh, Rigging, Weight-Painting & AI Animation Studio for Unity",
   "scripts": {
-    "dev": "next dev --port 3460",
+    "dev": "next dev --hostname 127.0.0.1 --port 3460",
     "build": "next build",
-    "start": "next start --port 3460",
+    "start": "next start --hostname 127.0.0.1 --port 3460",
     "test": "tsx --test src/core/*.test.ts src/exporters/*.test.ts",
     "export:cli": "tsx src/cli/export.ts",
     "migrate:slotspy": "tsx src/cli/migrate-slotspy.ts",
@@ -30,6 +30,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@esotericsoftware/spine-core": "^4.2.120",
     "@tailwindcss/postcss": "^4",
     "@types/delaunator": "^5.0.0",
     "@types/earcut": "^2.1.4",
