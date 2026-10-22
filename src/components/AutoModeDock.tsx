@@ -12,7 +12,7 @@ import {
   profileProjectForUnityMobile,
   type ElementalVfxType,
 } from "@/core/vfx-colliders-profiler";
-import { useStudioStore } from "@/store/useStudioStore";
+import { useStudioNoTime } from "@/store/useStudioStore";
 import { heroTemplate } from "./ProjectsMenu";
 
 const ARCHETYPE_OPTIONS: { id: AutoArchetypeId; label: string }[] = [
@@ -60,7 +60,7 @@ export function AutoModeDock({
     setMobileProfileScale,
     setSlotStageMode,
     setSlotOrientation,
-  } = useStudioStore();
+  } = useStudioNoTime();
 
   const [isShaded, setIsShaded] = useState(false);
 

@@ -14,7 +14,7 @@ import { projectFromCut, type CutResult } from "@/core/import-project";
 import { RIG_BONE_PALETTE, type CurveType, type SpineForgeProject } from "@/core/schema";
 import { generateUnity2DColliders } from "@/core/vfx-colliders-profiler";
 import type { AutoWeightMode, FfdLiquifyMode, WeightBrushMode } from "@/core/weights";
-import { useStudioStore } from "@/store/useStudioStore";
+import { useReadoutTime, useStudioNoTime } from "@/store/useStudioStore";
 import { AutoModeDock } from "./AutoModeDock";
 import { BUILTIN_PROJECTS, heroTemplate } from "./ProjectsMenu";
 
@@ -74,7 +74,6 @@ export function LeftToolOptionsPane({
     selectedPart,
     activeClip,
     activeSkinName,
-    currentTime,
     brushMode,
     liquifyMode,
     brushRadius,
@@ -108,7 +107,9 @@ export function LeftToolOptionsPane({
     applyVoiceLipSync,
     setBoneKeyframeAtCurrentTime,
     setBoneCurveAtCurrentTime,
-  } = useStudioStore();
+  } = useStudioNoTime();
+  // Readouts follow the playhead a few times a second while playing, exactly when paused.
+  const currentTime = useReadoutTime();
 
   // State for Import PSD / Smart Part Knife
   const [cutterStatus, setCutterStatus] = useState<string>("");

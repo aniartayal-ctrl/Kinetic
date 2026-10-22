@@ -8,7 +8,7 @@ import { commandForEvent, isMacPlatform, shortcutLabel, unsupportedHint, type Co
 import type { SpineForgeProject } from "@/core/schema";
 import { RIG_BONE_PALETTE } from "@/core/schema";
 import { buildBrowserUnityExportBundle } from "@/exporters/browser-bundle-builder";
-import { useStudioStore, type StudioMode, type TransformTool } from "@/store/useStudioStore";
+import { useStudioNoTime, useStudioStore, type StudioMode, type TransformTool } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { PanelBoundary } from "./PanelBoundary";
@@ -322,17 +322,45 @@ function isTextEntry(target: EventTarget | null): boolean {
   return !["range", "checkbox", "radio", "button", "color"].includes((el as HTMLInputElement).type);
 }
 
+/* ── Playhead widgets: the only parts of the shell that redraw every frame during playback ─── */
+
+function PlayheadSlider({ duration, fps, freeRef }: { duration: number; fps: number; freeRef: { current: boolean } }) {
+  const currentTime = useStudioStore((s) => s.currentTime);
+  return (
+    <input
+      type="range"
+      min={0}
+      max={duration}
+      step={0.001}
+      value={currentTime}
+      aria-label="Playhead"
+      onChange={(e) => {
+        const s = useStudioStore.getState();
+        s.setIsPlaying(false);
+        // Scrubbing snaps to frames as in Spine; hold ⇧ to scrub freely.
+        const t = parseFloat(e.target.value);
+        s.setCurrentTime(freeRef.current ? t : snapTime(t, fps, duration));
+      }}
+      className="w-full cursor-pointer"
+    />
+  );
+}
+
+function TimeReadout() {
+  const currentTime = useStudioStore((s) => s.currentTime);
+  return <span className="text-[var(--label)]">{currentTime.toFixed(2)}</span>;
+}
+
 /* ── Studio shell ──────────────────────────────────────────────────────────────────────────── */
 
 export function StudioApp() {
-  const store = useStudioStore();
+  const store = useStudioNoTime();
   const {
     project,
     mode,
     selectedBone,
     selectedPart,
     activeClip,
-    currentTime,
     isPlaying,
     playbackSpeed,
     lockedBones,
@@ -1338,21 +1366,7 @@ export function StudioApp() {
 
             {/* Scrubber with event markers */}
             <div className="relative flex-1 min-w-[120px] flex items-center px-1">
-              <input
-                type="range"
-                min={0}
-                max={clipDuration}
-                step={0.001}
-                value={currentTime}
-                aria-label="Playhead"
-                onChange={(e) => {
-                  setIsPlaying(false);
-                  // Scrubbing snaps to frames as in Spine; hold ⇧ to scrub freely.
-                  const t = parseFloat(e.target.value);
-                  setCurrentTime(shiftDownRef.current ? t : snapTime(t, currentClipObj?.fps || 30, clipDuration));
-                }}
-                className="w-full cursor-pointer"
-              />
+              <PlayheadSlider duration={clipDuration} fps={currentClipObj?.fps || 30} freeRef={shiftDownRef} />
               {(currentClipObj?.events ?? []).map((ev, idx) => {
                 const pct = Math.max(0, Math.min(100, (ev.time / clipDuration) * 100));
                 return (
@@ -1377,7 +1391,7 @@ export function StudioApp() {
             </div>
 
             <span className="text-[12px] tabular-nums text-[var(--label-2)] whitespace-nowrap w-[92px] text-right">
-              <span className="text-[var(--label)]">{currentTime.toFixed(2)}</span> / {clipDuration.toFixed(2)} s
+              <TimeReadout /> / {clipDuration.toFixed(2)} s
             </span>
 
             <div className="segmented shrink-0" role="group" aria-label="Playback speed">

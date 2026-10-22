@@ -17,7 +17,33 @@ import { applyAffine, buildSkeleton, deformMeshVerticesCPU } from "@/core/solver
 import { evaluateElementalVfx, generateUnity2DColliders } from "@/core/vfx-colliders-profiler";
 import { SpineForgeWebGLRenderer, type GhostFramePass } from "@/core/webgl-renderer";
 import { buildPartMesh, computeVertexHeatmapColors } from "@/core/weights";
-import { useStudioStore } from "@/store/useStudioStore";
+import { useStudioNoTime, useStudioStore } from "@/store/useStudioStore";
+
+const edgeCache = new WeakMap<object, Uint32Array>();
+
+/** Unique triangle edges as vertex index pairs, computed once per mesh object. */
+function uniqueEdges(mesh: object, indices: ArrayLike<number>): Uint32Array {
+  const cached = edgeCache.get(mesh);
+  if (cached) return cached;
+  const seen = new Set<number>();
+  const out: number[] = [];
+  const add = (a: number, b: number) => {
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    const key = lo * 1_000_003 + hi;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(lo, hi);
+  };
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    add(indices[t]!, indices[t + 1]!);
+    add(indices[t + 1]!, indices[t + 2]!);
+    add(indices[t + 2]!, indices[t]!);
+  }
+  const edges = Uint32Array.from(out);
+  edgeCache.set(mesh, edges);
+  return edges;
+}
 
 export function StudioViewport() {
   const {
@@ -26,7 +52,6 @@ export function StudioViewport() {
     selectedBone,
     selectedPart,
     activeClip,
-    currentTime,
     playbackSpeed,
     heatmapSingleBone,
     selectBone,
@@ -45,7 +70,9 @@ export function StudioViewport() {
     setSlotStageMode,
     setSlotOrientation,
     requestDocument,
-  } = useStudioStore();
+  } = useStudioNoTime();
+  // The canvas draws itself every frame; React only needs the playhead for the slot stage overlay.
+  const stageTime = useStudioStore((s) => (s.showSlotStage ? s.currentTime : 0));
 
   const glCanvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -416,18 +443,16 @@ export function StudioViewport() {
 
             ctx.strokeStyle = isSelectedPart ? "rgba(103, 232, 249, 0.58)" : "rgba(148, 163, 184, 0.18)";
             ctx.lineWidth = isSelectedPart ? 1.25 : 0.75;
+            // Each shared edge once (half the segments of drawing every triangle), cached per mesh.
+            const edges = uniqueEdges(part.mesh, indices);
             ctx.beginPath();
-            for (let t = 0; t < indices.length; t += 3) {
-              const a = indices[t]!;
-              const b = indices[t + 1]!;
-              const c = indices[t + 2]!;
+            for (let e = 0; e < edges.length; e += 2) {
+              const a = edges[e]!;
+              const b = edges[e + 1]!;
               const [ax, ay] = toScreen(deformed[a * 2]!, deformed[a * 2 + 1]!);
               const [bx, by] = toScreen(deformed[b * 2]!, deformed[b * 2 + 1]!);
-              const [cx, cy] = toScreen(deformed[c * 2]!, deformed[c * 2 + 1]!);
               ctx.moveTo(ax, ay);
               ctx.lineTo(bx, by);
-              ctx.lineTo(cx, cy);
-              ctx.closePath();
             }
             ctx.stroke();
 
@@ -643,6 +668,7 @@ export function StudioViewport() {
 
     const animator = animatorRef.current;
     if (!animator) return;
+    const currentTime = useStudioStore.getState().currentTime;
     const evalTime = mode === "rig" || mode === "mesh" ? 0 : currentTime;
     const frame = animator.evaluateAt(evalTime, 0);
 
@@ -811,9 +837,9 @@ export function StudioViewport() {
             const activeStage: SlotSuiteStageMode =
               slotStageMode === "off" ? "reel_tumble_cascade" : slotStageMode;
             const clipDur = Math.max(0.5, project.animations[activeClip]?.duration ?? 2.0);
-            const normProgress = (currentTime % clipDur) / clipDur;
+            const normProgress = (stageTime % clipDur) / clipDur;
             const bigWinFrame = evaluateBigWinChoreography(normProgress, 100, 75);
-            const tumbleFrame = evaluateTumbleCascadeChoreography(project.id, currentTime, 2.0);
+            const tumbleFrame = evaluateTumbleCascadeChoreography(project.id, stageTime, 2.0);
             const wheelFrame = evaluateBonusWheelChoreography(normProgress);
             const baseDir = project.id.includes("solara")
               ? "/presets/sands-of-solara"
@@ -935,7 +961,7 @@ export function StudioViewport() {
                       src={`${baseDir}/title-free.webp`}
                       alt="Free Spins Splash"
                       style={{
-                        transform: `scale(${1 + Math.sin(currentTime * 4) * 0.06})`,
+                        transform: `scale(${1 + Math.sin(stageTime * 4) * 0.06})`,
                       }}
                       className="max-h-28 object-contain drop-shadow-[0_0_24px_rgba(56,189,248,0.65)]"
                     />

@@ -39,7 +39,8 @@ const step = async (name, fn) => {
   try {
     await fn();
   } catch (err) {
-    report.errors.push(`${name}: ${err.message.split("\n")[0]}`);
+    // Playwright puts the locator it was waiting for on the following lines.
+    report.errors.push(`${name}: ${err.message.split("\n").slice(0, 3).join(" ").replace(/\s+/g, " ").slice(0, 300)}`);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/fail-${name.replace(/\W+/g, "-")}.png` }).catch(() => {});
   }
   console.error(`· ${name} ${((Date.now() - t0) / 1000).toFixed(1)}s, errors so far: ${report.errors.length}`);
@@ -47,7 +48,16 @@ const step = async (name, fn) => {
 const alive = async (where) => {
   if (!(await page.locator("header").first().isVisible())) report.errors.push(`studio not visible after ${where}`);
 };
-const click = (loc) => loc.click({ timeout: 4000 });
+// Software WebGL in headless Chromium makes frames slow while a clip plays; give clicks room.
+const click = (loc) => loc.click({ timeout: 8000 });
+const studio = (fn, ...args) => page.evaluate(([f, a]) => window.__kineticTest[f](...a), [fn, args]);
+/** Stops playback so dialogs and menus are not competing with a busy render loop. */
+const pause = async () => {
+  if ((await studio("state")).isPlaying) {
+    await page.locator("body").click({ position: { x: 800, y: 300 } });
+    await page.keyboard.press("Space");
+  }
+};
 
 await page.goto(`${URL}/?test`, { waitUntil: "networkidle" });
 await page.waitForTimeout(1200);
@@ -300,6 +310,7 @@ await step("projects", async () => {
   const titleButton = () => page.getByRole("button", { name: /^Project:/ });
   const status = () => page.getByRole("button", { name: /^Save\./ }).getAttribute("aria-label");
   await page.locator("body").click({ position: { x: 800, y: 300 } });
+  await pause();
 
   // ⌘S lands in projects/, not in the shipped presets.
   await page.keyboard.press("Control+s");

@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { bakeClipConstraintsToKeyframes, sampleDeformTrack } from "@/core/animator";
 import { applyPose, breakdownKey, patchKeyAt, retimeClip, samplePose, snapTime, upsertKey } from "@/core/keyframes";
 import type { BonePose } from "@/core/solver";
@@ -959,3 +960,22 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     state.pushHistory(`Baked Springs (${state.activeClip})`, nextProject);
   },
 }));
+
+const omitTime = (s: StudioState) => {
+  const { currentTime, ...rest } = s;
+  void currentTime;
+  return rest;
+};
+
+/**
+ * The whole store except the playhead. During playback the playhead changes every frame, so panels
+ * that do not draw it read the store through this hook and stay still while the canvas plays.
+ */
+export function useStudioNoTime() {
+  return useStudioStore(useShallow(omitTime));
+}
+
+/** The playhead for readouts: exact while paused, a few updates a second while playing. */
+export function useReadoutTime() {
+  return useStudioStore((s) => (s.isPlaying ? Math.floor(s.currentTime * 5) / 5 : s.currentTime));
+}

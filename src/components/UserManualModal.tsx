@@ -2,10 +2,10 @@
 
 import { ShortcutsSheet } from "./ShortcutsSheet";
 import { useState } from "react";
-import { useStudioStore } from "@/store/useStudioStore";
+import { useStudioNoTime } from "@/store/useStudioStore";
 
 export function CanvasCoachPill({ onOpenManual }: { onOpenManual: () => void }) {
-  const { mode, selectedBone, selectedPart, brushMode, liquifyMode, brushRadius } = useStudioStore();
+  const { mode, selectedBone, selectedPart, brushMode, liquifyMode, brushRadius } = useStudioNoTime();
 
   const coachMessage: Record<string, string> = {
     import: "Import (O): Switch presets/skins, upload a layered .psd or flat .png, or pick any of the 8 Slot Symbols on the left.",
@@ -48,7 +48,7 @@ export function UserManualModal({
     setSlotStageMode,
     requestDocument,
     setActiveVfx,
-  } = useStudioStore();
+  } = useStudioNoTime();
 
   const [activeTab, setActiveTab] = useState<"quickstart" | "tools" | "slot_suite" | "unity">("quickstart");
 

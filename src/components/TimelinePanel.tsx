@@ -15,7 +15,7 @@ import {
   type Channel,
 } from "@/core/keyframes";
 import { RIG_BONE_PALETTE, type AnimationClip, type CurveType, type TransformKey } from "@/core/schema";
-import { useStudioStore } from "@/store/useStudioStore";
+import { useReadoutTime, useStudioNoTime, useStudioStore } from "@/store/useStudioStore";
 
 export type TimelineView = "keys" | "curves";
 type KeyRef = { bone: string; index: number };
@@ -57,7 +57,7 @@ function useElementSize<T extends HTMLElement>() {
 /* ── Timeline panel: header + dope sheet or graph editor ───────────────────────────────────── */
 
 export function TimelinePanel({ view, onViewChange }: { view: TimelineView; onViewChange: (v: TimelineView) => void }) {
-  const { project, activeClip, selectedBone, editActiveClip, insertBreakdown, copyPose, pastePose, poseClipboard } = useStudioStore();
+  const { project, activeClip, selectedBone, editActiveClip, insertBreakdown, copyPose, pastePose, poseClipboard } = useStudioNoTime();
   const clip = project.animations[activeClip];
   const [selected, setSelected] = useState<KeyRef | null>(null);
   const [fraction, setFraction] = useState(0.5);
@@ -195,11 +195,22 @@ function ClipTiming({ clip }: { clip: AnimationClip }) {
   );
 }
 
+/* ── Playheads: the only timeline parts that redraw every frame during playback ─────────────── */
+
+function RowPlayhead({ duration }: { duration: number }) {
+  const t = useStudioStore((s) => s.currentTime);
+  return <div className="absolute top-0 bottom-0 w-px bg-[var(--accent)] pointer-events-none" style={{ left: `${Math.min(100, (t / duration) * 100)}%` }} />;
+}
+
+function GraphPlayhead({ x, y1, y2 }: { x: (t: number) => number; y1: number; y2: number }) {
+  const t = useStudioStore((s) => s.currentTime);
+  return <line x1={x(t)} x2={x(t)} y1={y1} y2={y2} stroke="#0a84ff" strokeWidth={1.5} pointerEvents="none" />;
+}
+
 /* ── Dope sheet: click to select, drag to retime (frame-snapped), ⌥-click to delete ─────────── */
 
 function DopeSheet({ clip, selected, onSelect }: { clip: AnimationClip; selected: KeyRef | null; onSelect: (k: KeyRef | null) => void }) {
-  const { project, selectedBone, currentTime, selectBone, setCurrentTime, setIsPlaying, editActiveClip, commitPreview, deleteBoneKeyframe } =
-    useStudioStore();
+  const { project, selectedBone, selectBone, setCurrentTime, setIsPlaying, editActiveClip, commitPreview, deleteBoneKeyframe } = useStudioNoTime();
   const duration = clip.duration;
   const fps = clip.fps || 30;
 
@@ -229,10 +240,7 @@ function DopeSheet({ clip, selected, onSelect }: { clip: AnimationClip; selected
             </button>
             <div className="relative flex-1 h-full cursor-text" onPointerDown={(e) => scrub(e, bone.name)}>
               <div className="absolute inset-x-0 top-1/2 h-px bg-[var(--separator)] pointer-events-none" />
-              <div
-                className="absolute top-0 bottom-0 w-px bg-[var(--accent)] pointer-events-none"
-                style={{ left: `${Math.min(100, (currentTime / duration) * 100)}%` }}
-              />
+              <RowPlayhead duration={duration} />
               {keys.map((k, i) => {
                 const isSel = selected?.bone === bone.name && selected.index === i;
                 return (
@@ -304,7 +312,8 @@ type GraphDrag =
 type Segment = { index: number; x0: number; y0: number; x1: number; y1: number; c: Bezier };
 
 function GraphEditor({ clip, selected, onSelect }: { clip: AnimationClip; selected: KeyRef | null; onSelect: (k: KeyRef | null) => void }) {
-  const { project, selectedBone, currentTime, setCurrentTime, setIsPlaying, editActiveClip, commitPreview } = useStudioStore();
+  const { project, selectedBone, setCurrentTime, setIsPlaying, editActiveClip, commitPreview } = useStudioNoTime();
+  const readoutTime = useReadoutTime();
   const bone = selectedBone ?? project.bones[0]?.name ?? "root";
   const { ref, size } = useElementSize<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -469,7 +478,7 @@ function GraphEditor({ clip, selected, onSelect }: { clip: AnimationClip; select
   const framePx = innerW / Math.max(1, duration * fps);
   const labelEvery = [1, 2, 5, 10, 15, 30, 60, 120].find((f) => f * framePx >= 44) ?? 240;
   const totalFrames = Math.round(duration * fps);
-  const pose = sampleTransformTrack(track, currentTime);
+  const pose = sampleTransformTrack(track, readoutTime);
   const selKey = track[selIndex];
   const selCurve = selKey ? JSON.stringify(selKey.curve ?? "linear") : "";
 
@@ -625,7 +634,7 @@ function GraphEditor({ clip, selected, onSelect }: { clip: AnimationClip; select
             )}
 
             {/* Playhead */}
-            <line x1={tx(currentTime)} x2={tx(currentTime)} y1={PT - 6} y2={H - PB} stroke="#0a84ff" strokeWidth={1.5} pointerEvents="none" />
+            <GraphPlayhead x={tx} y1={PT - 6} y2={H - PB} />
           </svg>
         )}
         {track.length === 0 && (
