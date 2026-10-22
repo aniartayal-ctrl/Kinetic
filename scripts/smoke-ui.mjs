@@ -40,6 +40,7 @@ const step = async (name, fn) => {
     await fn();
   } catch (err) {
     report.errors.push(`${name}: ${err.message.split("\n")[0]}`);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/fail-${name.replace(/\W+/g, "-")}.png` }).catch(() => {});
   }
   console.error(`· ${name} ${((Date.now() - t0) / 1000).toFixed(1)}s, errors so far: ${report.errors.length}`);
 };
