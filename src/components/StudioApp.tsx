@@ -941,9 +941,8 @@ export function StudioApp() {
         {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
         <header className="relative z-30 pointer-events-auto material rounded-[var(--radius-panel)] h-12 px-2 flex items-center gap-1 shrink-0">
           <div className="flex items-center gap-1 w-[260px] shrink-0">
-            <div className="h-7 w-7 rounded-[8px] grid place-items-center bg-gradient-to-b from-[#3d9bff] to-[#0062cc] text-white text-[13px] font-bold ml-1 mr-2 shadow-sm">
-              K
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/kinetic-icon-small.svg" alt="Kinetic Pro" width={28} height={28} className="ml-1 mr-2 shrink-0" draggable={false} />
             <button
               className="icon-btn"
               aria-pressed={leftPaneOpen}

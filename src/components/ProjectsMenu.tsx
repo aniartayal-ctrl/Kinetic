@@ -148,7 +148,8 @@ export function UnsavedChangesDialog({
       onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
     >
       <div role="alertdialog" aria-modal="true" aria-labelledby="unsaved-title" aria-describedby="unsaved-body" className="material-thick rounded-[14px] w-[360px] p-5 space-y-3 text-center">
-        <div className="mx-auto h-11 w-11 rounded-[11px] grid place-items-center bg-gradient-to-b from-[#3d9bff] to-[#0062cc] text-white text-[18px] font-bold shadow-sm">K</div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/kinetic-icon-small.svg" alt="" width={48} height={48} className="mx-auto" draggable={false} />
         <h2 id="unsaved-title" className="text-[13px] font-semibold leading-snug">
           Save changes to “{title}”?
         </h2>

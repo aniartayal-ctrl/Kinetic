@@ -1,3 +1,5 @@
+<p align="center"><img src="public/brand/kinetic-icon.svg" width="112" alt="Kinetic Pro"></p>
+
 # Kinetic Pro — Apple Metal 2D Mesh, Rigging & Slot Game Animation Suite for Unity
 
 **Kinetic Pro** is a standalone 2D skeletal, contour Delaunay mesh, weight-painting, and slot game animation studio built with **Apple Metal GPU acceleration (`Kinetic Pro.app`)**, a macOS pro-app style workspace, an **AI Copilot that runs every tool (Claude with native tool use, or an offline planner)**, and a **3-Way Unity & Spine 4.2 Export Engine**.
