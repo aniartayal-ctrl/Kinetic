@@ -41,6 +41,7 @@ describe("Claude integration (mock Messages API)", () => {
     for (const prompt of Object.keys(SCRIPTS).filter((p) => p !== "mock: memory")) {
       const run = await runAgentTurn({ prompt, transcript, callStep: claude, host });
       assert.equal(run.outcome, "done", `${prompt}: ${run.error ?? run.outcome}`);
+      assert.equal(run.usage?.output, run.steps * 30, "token usage adds up across steps");
       transcript = run.transcript;
     }
     const report = mock.report();

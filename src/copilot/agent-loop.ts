@@ -7,7 +7,7 @@
  * or an error ends the run). The transcript stays valid for the next prompt in every outcome.
  */
 
-import type { ModelStep, ToolCall, Turn } from "@/core/copilot/providers";
+import { addUsage, type ModelStep, type ToolCall, type Turn, type Usage } from "@/core/copilot/providers";
 import type { CopilotContext } from "@/core/copilot/tools";
 import { copilotContext, executeCopilotActions, type ActionResult, type ExecutorHost } from "./executor";
 
@@ -27,6 +27,8 @@ export type AgentRun = {
   /** Tool calls executed in this run. */
   applied: number;
   steps: number;
+  /** Tokens across every model call in the run, when the provider reports them. */
+  usage?: Usage;
   outcome: "done" | "limit" | "stopped" | "error";
   error?: string;
   code?: string;
@@ -55,6 +57,7 @@ export async function runAgentTurn(opts: {
   const maxSteps = opts.maxSteps ?? MAX_STEPS;
   let transcript: Turn[] = [...opts.transcript, { role: "user", text: opts.prompt }];
   let applied = 0;
+  let usage: Usage | undefined;
   for (let step = 0; step < maxSteps; step++) {
     opts.onStep?.(step + 1);
     let reply: ModelStep;
@@ -64,23 +67,25 @@ export async function runAgentTurn(opts: {
     } catch (err) {
       // A run that produced nothing leaves no trace, so retrying does not repeat the prompt.
       if (step === 0) transcript = transcript.slice(0, -1);
-      if (isAbort(err, signal)) return { transcript, applied, steps: step, outcome: "stopped" };
+      if (isAbort(err, signal)) return { transcript, applied, steps: step, usage, outcome: "stopped" };
       return {
         transcript,
         applied,
         steps: step,
+        usage,
         outcome: "error",
         error: err instanceof Error ? err.message : "Request failed",
         code: err instanceof StepError ? err.code : undefined,
       };
     }
+    usage = addUsage(usage, reply.usage);
     const calls = Array.isArray(reply.calls) ? reply.calls : [];
     transcript = [...transcript, { role: "assistant", text: reply.text ?? "", calls }];
     if (reply.text) opts.onText?.(reply.text);
-    if (calls.length === 0) return { transcript, applied, steps: step + 1, outcome: "done" };
+    if (calls.length === 0) return { transcript, applied, steps: step + 1, usage, outcome: "done" };
     if (signal?.aborted) {
       transcript = [...transcript, { role: "tool", results: calls.map((c) => ({ id: c.id, ok: false, message: "Stopped by the user" })) }];
-      return { transcript, applied, steps: step + 1, outcome: "stopped" };
+      return { transcript, applied, steps: step + 1, usage, outcome: "stopped" };
     }
     const results = await executeCopilotActions(
       calls.map((c) => ({ tool: c.tool, args: c.args, summary: "" })),
@@ -89,7 +94,7 @@ export async function runAgentTurn(opts: {
     applied += results.length;
     transcript = [...transcript, { role: "tool", results: toolResults(calls, results) }];
     opts.onResults?.(results);
-    if (signal?.aborted) return { transcript, applied, steps: step + 1, outcome: "stopped" };
+    if (signal?.aborted) return { transcript, applied, steps: step + 1, usage, outcome: "stopped" };
   }
-  return { transcript, applied, steps: maxSteps, outcome: "limit" };
+  return { transcript, applied, steps: maxSteps, usage, outcome: "limit" };
 }

@@ -20,7 +20,14 @@ export type Turn =
   | { role: "assistant"; text: string; calls: ToolCall[] }
   | { role: "tool"; results: ToolResult[] };
 
-export type ModelStep = { text: string; calls: ToolCall[]; done: boolean };
+export type Usage = { input: number; output: number; cached: number };
+export type ModelStep = { text: string; calls: ToolCall[]; done: boolean; usage?: Usage };
+
+export function addUsage(a: Usage | undefined, b: Usage | undefined): Usage | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return { input: a.input + b.input, output: a.output + b.output, cached: a.cached + b.cached };
+}
 
 export const MAX_TURNS = 24;
 
@@ -107,7 +114,11 @@ export function anthropicRequest(model: string, transcript: Turn[], context: Cop
 }
 
 export function parseAnthropic(data: unknown): ModelStep {
-  const d = data as { content?: { type: string; text?: string; id?: string; name?: string; input?: unknown }[]; stop_reason?: string };
+  const d = data as {
+    content?: { type: string; text?: string; id?: string; name?: string; input?: unknown }[];
+    stop_reason?: string;
+    usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+  };
   const blocks = Array.isArray(d?.content) ? d.content : [];
   const text = blocks
     .filter((b) => b.type === "text")
@@ -117,7 +128,16 @@ export function parseAnthropic(data: unknown): ModelStep {
   const calls: ToolCall[] = blocks
     .filter((b) => b.type === "tool_use" && typeof b.id === "string" && typeof b.name === "string")
     .map((b) => ({ id: b.id!, tool: b.name!, args: b.input && typeof b.input === "object" ? (b.input as Record<string, unknown>) : {} }));
-  return { text, calls, done: calls.length === 0 || d.stop_reason !== "tool_use" };
+  const u = d?.usage;
+  const usage = u
+    ? {
+        // input_tokens excludes cached reads and cache writes; count everything the model read.
+        input: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
+        output: u.output_tokens ?? 0,
+        cached: u.cache_read_input_tokens ?? 0,
+      }
+    : undefined;
+  return { text, calls, done: calls.length === 0 || d.stop_reason !== "tool_use", ...(usage ? { usage } : {}) };
 }
 
 /* ── OpenAI / xAI (Chat Completions, function calling) ──────────────────────────────────────── */
@@ -145,6 +165,7 @@ export function openAiRequest(model: string, transcript: Turn[], context: Copilo
 export function parseOpenAi(data: unknown): ModelStep {
   const d = data as {
     choices?: { finish_reason?: string; message?: { content?: string | null; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
   };
   const choice = d?.choices?.[0];
   const calls: ToolCall[] = (choice?.message?.tool_calls ?? [])
@@ -159,7 +180,9 @@ export function parseOpenAi(data: unknown): ModelStep {
       }
       return { id: c.id!, tool: c.function!.name!, args };
     });
-  return { text: (choice?.message?.content ?? "").trim(), calls, done: calls.length === 0 };
+  const u = d?.usage;
+  const usage = u ? { input: u.prompt_tokens ?? 0, output: u.completion_tokens ?? 0, cached: u.prompt_tokens_details?.cached_tokens ?? 0 } : undefined;
+  return { text: (choice?.message?.content ?? "").trim(), calls, done: calls.length === 0, ...(usage ? { usage } : {}) };
 }
 
 /** Human-readable reason for a failed provider response. */

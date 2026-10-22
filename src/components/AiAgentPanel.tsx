@@ -186,7 +186,7 @@ export function AiAgentPanel({
         const data = (await res.json().catch(() => ({}))) as Partial<ModelStep> & { model?: string; error?: string; code?: string };
         if (!res.ok) throw new StepError(data.error ?? `Request failed (${res.status})`, data.code);
         if (data.model) setLastModel(data.model);
-        return { text: data.text ?? "", calls: Array.isArray(data.calls) ? data.calls : [], done: Boolean(data.done) };
+        return { text: data.text ?? "", calls: Array.isArray(data.calls) ? data.calls : [], done: Boolean(data.done), usage: data.usage };
       },
     });
     transcriptRef.current = trimTranscript(run.transcript, KEEP_TURNS);
@@ -195,12 +195,16 @@ export function AiAgentPanel({
       await runPlanner(text, replyId, `No ${providerName} key, so the built-in planner ran this. Add one under Key, or set ${KEY_ENV[provider]} in .env.local and restart.`);
       return;
     }
+    const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+    const cost = run.usage ? `${k(run.usage.input)} tokens in (${k(run.usage.cached)} cached), ${k(run.usage.output)} out` : "";
     const note =
-      run.outcome === "limit"
-        ? `Paused after ${run.steps} steps. Say “continue” to keep going.`
-        : run.outcome === "stopped"
-          ? "Stopped."
-          : undefined;
+      [
+        run.outcome === "limit" ? `Paused after ${run.steps} steps. Say “continue” to keep going.` : run.outcome === "stopped" ? "Stopped." : "",
+        run.steps > 1 ? `${run.steps} steps` : "",
+        cost,
+      ]
+        .filter(Boolean)
+        .join(" · ") || undefined;
     update(replyId, (m) => ({
       ...m,
       ...(note ? { note } : {}),

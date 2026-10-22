@@ -157,6 +157,11 @@ describe("Claude response", () => {
     assert.equal(step.done, false);
   });
 
+  it("reports tokens, counting cached reads as input", () => {
+    const step = parseAnthropic({ stop_reason: "end_turn", content: [{ type: "text", text: "ok" }], usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 4000 } });
+    assert.deepEqual(step.usage, { input: 4100, output: 20, cached: 4000 });
+  });
+
   it("finishes on end_turn", () => {
     const step = parseAnthropic({ stop_reason: "end_turn", content: [{ type: "text", text: "Done." }] });
     assert.deepEqual(step, { text: "Done.", calls: [], done: true });

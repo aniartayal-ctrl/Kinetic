@@ -204,6 +204,7 @@ async function main() {
   console.log(`Copilot eval · ${label} · ${scenarios.length} scenarios\n`);
   let passed = 0;
   const started = Date.now();
+  const tokens = { input: 0, output: 0, cached: 0 };
   for (const sc of scenarios) {
     useStudioStore.setState(initial, true);
     s().setIsPlaying(false);
@@ -223,6 +224,7 @@ async function main() {
           onResults: (rs) => tools.push(...rs.map((r) => `${r.action.tool}${r.ok ? "" : "✕"}`)),
         });
         if (run.outcome === "error") failure = run.error ?? "error";
+        if (run.usage) for (const k of ["input", "output", "cached"] as const) tokens[k] += run.usage[k];
       } else {
         const plan = planCommand(sc.prompt, copilotContext());
         reply = plan.reply;
@@ -240,6 +242,7 @@ async function main() {
   }
   const total = scenarios.length;
   console.log(`\n${passed}/${total} passed (${Math.round((passed / Math.max(1, total)) * 100)}%) in ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  if (tokens.input > 0) console.log(`Tokens: ${tokens.input} in (${tokens.cached} cached), ${tokens.output} out`);
   process.exit(passed === total ? 0 : 1);
 }
 

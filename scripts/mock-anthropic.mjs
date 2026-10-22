@@ -239,14 +239,14 @@ export function respond(req, report) {
   const script = SCRIPTS[prompt.trim().toLowerCase()];
   const out = script?.[step]?.(prev, report, req) ?? (script ? "Done." : `I only follow scripts in the mock. Try: ${Object.keys(SCRIPTS).join(", ")}`);
   if (typeof out === "string") {
-    return { id: `msg_mock_${++ids}`, type: "message", role: "assistant", model: req.model, content: [{ type: "text", text: out }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
+    return { id: `msg_mock_${++ids}`, type: "message", role: "assistant", model: req.model, content: [{ type: "text", text: out }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 120, output_tokens: 30, cache_read_input_tokens: 4000 } };
   }
   const content = out.map(([name, input]) => {
     const id = `toolu_mock_${++ids}`;
     report.calls.push({ id, tool: name, input, prompt });
     return { type: "tool_use", id, name, input };
   });
-  return { id: `msg_mock_${++ids}`, type: "message", role: "assistant", model: req.model, content, stop_reason: "tool_use", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
+  return { id: `msg_mock_${++ids}`, type: "message", role: "assistant", model: req.model, content, stop_reason: "tool_use", stop_sequence: null, usage: { input_tokens: 120, output_tokens: 30, cache_read_input_tokens: 4000 } };
 }
 
 export function startMockAnthropic(port = 4599) {
