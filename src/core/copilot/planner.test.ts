@@ -64,11 +64,21 @@ test("every feature area is reachable in plain English", () => {
     ["undo", ["undo"]],
     ["save", ["save"]],
     ["export", ["export"]],
+    ["open project sands", ["open_project"]],
+    ["open the astral forge project", ["open_project"]],
+    ["show my projects", ["open_project"]],
   ];
   for (const [prompt, expected] of cases) assert.deepEqual(tools(prompt), expected, prompt);
   // Every emitted tool exists in the catalog.
   for (const [prompt] of cases) for (const a of planCommand(prompt, ctx).actions) assert.ok(TOOL_NAMES.has(a.tool), a.tool);
   assert.ok(COPILOT_TOOLS.length >= 30);
+});
+
+test("project requests carry the name the user typed", () => {
+  assert.deepEqual(planCommand("open project sands", ctx).actions[0]!.args, { name: "sands" });
+  assert.deepEqual(planCommand("open the astral forge project", ctx).actions[0]!.args, { name: "astral forge" });
+  assert.deepEqual(planCommand("show my projects", ctx).actions[0]!.args, {});
+  assert.deepEqual(planCommand("save then open project sands", ctx).actions.map((a) => a.tool), ["save", "open_project"]);
 });
 
 test("unknown requests explain themselves instead of guessing", () => {

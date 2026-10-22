@@ -10,6 +10,7 @@ import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { PanelBoundary } from "./PanelBoundary";
+import { BUILTIN_PROJECTS, fetchSavedProjects, ProjectsMenu, UnsavedChangesDialog, type OpenTarget } from "./ProjectsMenu";
 import { LeftToolOptionsPane, type ExportBundlePreviewData } from "./LeftToolOptionsPane";
 import { StudioViewport } from "./StudioViewport";
 import { TimelinePanel, type TimelineView } from "./TimelinePanel";
@@ -351,9 +352,22 @@ export function StudioApp() {
   const [isExporting, setIsExporting] = useState(false);
   const [showUserManual, setShowUserManual] = useState(false);
   const [saveState, setSaveState] = useState<{ label: string; tone: "idle" | "busy" | "ok" | "local" }>({
-    label: "Saved",
+    label: "Built-in template",
     tone: "ok",
   });
+  // The project as it was last saved or opened. Edits create new project objects, so identity
+  // tells us whether there are unsaved changes (and undoing back to the saved state clears it).
+  const savedRef = useRef<SpineForgeProject | null>(null);
+  const [savedProject, setSavedProject] = useState<SpineForgeProject | null>(null);
+  const markSaved = (p: SpineForgeProject) => {
+    savedRef.current = p;
+    setSavedProject(p);
+  };
+  const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
+  const [pendingOpen, setPendingOpen] = useState<OpenTarget | null>(null);
+  const [pendingError, setPendingError] = useState<string | null>(null);
+  const [pendingBusy, setPendingBusy] = useState(false);
+  const projectsMenu = usePopover();
 
   const viewMenu = usePopover();
   const transportMenu = usePopover();
@@ -373,8 +387,7 @@ export function StudioApp() {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ savedAt: Date.now(), reason, project: current }));
       lastAutosaved.current = current;
-      const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      setSaveState({ label: `Autosaved ${time}`, tone: "ok" });
+      setAutosavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     } catch {
       setSaveState({ label: "Autosave failed: browser storage full", tone: "local" });
     }
@@ -392,6 +405,7 @@ export function StudioApp() {
       localStorage.removeItem(AUTOSAVE_KEY);
     }
     lastAutosaved.current = useStudioStore.getState().project; // nothing to save until the user changes something
+    markSaved(useStudioStore.getState().project);
     const interval = window.setInterval(() => autosave("interval"), 5 * 60 * 1000);
     const onHide = () => document.visibilityState === "hidden" && autosave("hidden");
     const onUnload = () => autosave("unload");
@@ -413,36 +427,109 @@ export function StudioApp() {
   const restoreAutosave = () => {
     if (!recovery) return;
     const p = recovery.project;
-    store.setProject(p, "Restored autosave");
-    selectBone(p.bones[1]?.name ?? p.bones[0]?.name ?? null);
-    selectPart(p.parts[0]?.name ?? null);
-    if (!p.animations[activeClip]) setActiveClip(Object.keys(p.animations)[0] ?? activeClip);
+    store.openProject(p, "Restored autosave");
     lastAutosaved.current = p;
-    setRecovery(null);
+    setRecovery(null); // stays marked as edited: the restored work may not be on disk
   };
 
   const cueCount = useMemo(() => reviewClip(project, activeClip).length, [project, activeClip]);
 
-  const handleSaveProject = async () => {
-    autosave("save"); // keep the recovery copy current; the studio boots from presets
+  /** Saves into projects/<id>/. Uses the latest store state so copilot chains save what they just changed. */
+  const handleSaveProject = async (): Promise<boolean> => {
+    const current = useStudioStore.getState().project;
+    autosave("save");
     setSaveState({ label: "Saving…", tone: "busy" });
-    // Drop the old per-project copies (never read back) so they cannot fill the storage quota.
+    // Drop the old per-project browser copies (never read back) so they cannot fill the storage quota.
     try {
       for (const key of Object.keys(localStorage)) if (key.startsWith("kinetic-pro:") && key !== AUTOSAVE_KEY) localStorage.removeItem(key);
     } catch {
-      // Storage blocked; the server save below still runs.
+      // Storage blocked; the disk save below still runs.
     }
     try {
-      const res = await fetch("/api/save-project", {
+      const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project }),
+        body: JSON.stringify({ project: current }),
       });
-      const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      setSaveState(res.ok ? { label: `Saved ${time}`, tone: "ok" } : { label: "Saved in browser only", tone: "local" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setSaveState({ label: `Not saved: ${data.error ?? `error ${res.status}`}`, tone: "local" });
+        return false;
+      }
+      markSaved(current);
+      setSaveState({ label: `Saved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, tone: "ok" });
+      return true;
     } catch {
-      setSaveState({ label: "Saved in browser only", tone: "local" });
+      setSaveState({ label: "Not saved: studio server unreachable (browser autosave kept)", tone: "local" });
+      return false;
     }
+  };
+
+  /** Replaces the open document. Callers check for unsaved changes first (requestOpen). */
+  const performOpen = async (target: OpenTarget): Promise<void> => {
+    if (target.kind === "preset") {
+      useStudioStore.getState().loadPreset(target.id);
+    } else {
+      const res = await fetch(`/api/projects/${encodeURIComponent(target.id)}`, { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as { project?: SpineForgeProject; error?: string };
+      if (!res.ok || !data.project) throw new Error(data.error ?? `Could not open ${target.title}`);
+      store.openProject(data.project, `Opened ${data.project.title}`);
+    }
+    const opened = useStudioStore.getState().project;
+    markSaved(opened);
+    lastAutosaved.current = opened;
+    setExportData(null); // the export preview belonged to the previous project
+    setSaveState({ label: target.kind === "preset" ? "Built-in template" : "Opened from projects", tone: "ok" });
+  };
+
+  /** Opens `target`, or asks to save first when the current project has unsaved changes. */
+  const requestOpen = async (target: OpenTarget): Promise<"opened" | "confirm"> => {
+    if (useStudioStore.getState().project !== savedRef.current) {
+      setPendingError(null);
+      setPendingOpen(target);
+      return "confirm";
+    }
+    await performOpen(target);
+    return "opened";
+  };
+
+  const resolvePending = async (save: boolean) => {
+    if (!pendingOpen) return;
+    setPendingBusy(true);
+    setPendingError(null);
+    try {
+      if (save && !(await handleSaveProject())) {
+        setPendingError("Couldn’t save, so nothing was closed. The message under the title says why.");
+        return;
+      }
+      await performOpen(pendingOpen);
+      setPendingOpen(null);
+    } catch (err) {
+      setPendingError(err instanceof Error ? err.message : "Could not open the project");
+    } finally {
+      setPendingBusy(false);
+    }
+  };
+
+  /** Copilot entry point: opens by partial name, saved projects first, then templates. */
+  const openProjectByName = async (name?: string): Promise<string> => {
+    if (!name) {
+      projectsMenu.setOpen(true);
+      return "Showing projects";
+    }
+    const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const saved = await fetchSavedProjects();
+    const targets: OpenTarget[] = [
+      ...saved.filter((p) => !p.damaged).map((p) => ({ kind: "saved" as const, id: p.id, title: p.title })),
+      ...BUILTIN_PROJECTS,
+    ];
+    const q = norm(name);
+    const match =
+      targets.find((t) => norm(t.id) === q || norm(t.title) === q) ??
+      targets.find((t) => norm(t.id).includes(q) || norm(t.title).includes(q));
+    if (!match) throw new Error(`No project matches “${name}”`);
+    const result = await requestOpen(match);
+    return result === "confirm" ? `Save or discard your changes to open ${match.title}` : `Opened ${match.title}${match.kind === "preset" ? " (template)" : ""}`;
   };
 
   const handleRunExport = async () => {
@@ -497,6 +584,11 @@ export function StudioApp() {
         e.preventDefault();
         if (e.key.toLowerCase() === "c") copyPose();
         else pastePose();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        projectsMenu.setOpen(true);
         return;
       }
       if (mod && e.key.toLowerCase() === "e") {
@@ -609,8 +701,15 @@ export function StudioApp() {
   const reversedLayers = [...project.parts].reverse();
   const overlayState = store as unknown as Record<OverlayKey, boolean>;
   const activeOverlayCount = VIEW_GROUPS.flatMap((g) => g.items).filter((i) => overlayState[i.key]).length;
-  const saveDot =
-    saveState.tone === "ok" ? "#30d158" : saveState.tone === "busy" ? "#0a84ff" : saveState.tone === "local" ? "#ff9f0a" : "#8e8e93";
+  const dirty = savedProject !== null && project !== savedProject;
+  const status =
+    saveState.tone === "busy"
+      ? { dot: "#0a84ff", label: "Saving…" }
+      : saveState.tone === "local"
+        ? { dot: "#ff453a", label: saveState.label }
+        : dirty
+          ? { dot: "#ff9f0a", label: autosavedAt ? `Edited · autosaved ${autosavedAt}` : "Edited" }
+          : { dot: "#30d158", label: saveState.label };
 
   return (
     <div className="relative h-screen w-screen overflow-hidden select-none">
@@ -653,17 +752,48 @@ export function StudioApp() {
           </div>
 
           {/* Document title, centered like a macOS document window. */}
-          <div className="flex-1 min-w-0 flex flex-col items-center justify-center leading-tight">
-            <div className="text-[13px] font-semibold text-[var(--label)] truncate max-w-full">{project.title}</div>
+          <div className="relative flex-1 min-w-0 flex flex-col items-center justify-center leading-tight" ref={projectsMenu.ref}>
             <button
-              onClick={() => void handleSaveProject()}
-              className="flex items-center gap-1.5 text-[11px] text-[var(--label-2)] hover:text-[var(--label)] transition-colors"
-              data-tip="Save  ⌘S"
+              onClick={() => projectsMenu.setOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={projectsMenu.open}
+              aria-pressed={projectsMenu.open}
+              aria-label={`Project: ${project.title}`}
+              className="flex items-center gap-1 max-w-full rounded-[6px] px-1.5 -mb-px text-[13px] font-semibold text-[var(--label)] hover:bg-[var(--fill-3)] transition-colors"
+              data-tip="Open project  ⌘O"
               data-tip-side="bottom"
             >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: saveDot }} />
-              {TOOL_LABEL[mode]} · {saveState.label}
+              <span className="truncate">{project.title}</span>
+              <span className="text-[var(--label-3)] shrink-0">
+                <Icon name="chevronDown" size={12} />
+              </span>
             </button>
+            <button
+              onClick={() => void handleSaveProject()}
+              className="flex items-center gap-1.5 max-w-full text-[11px] text-[var(--label-2)] hover:text-[var(--label)] transition-colors"
+              data-tip="Save to projects  ⌘S"
+              data-tip-side="bottom"
+              aria-label={`Save. ${status.label}`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: status.dot }} />
+              <span className="truncate">
+                {TOOL_LABEL[mode]} · {status.label}
+              </span>
+            </button>
+            {projectsMenu.open && (
+              <ProjectsMenu
+                currentId={project.id}
+                onOpen={async (target) => {
+                  try {
+                    await requestOpen(target);
+                    projectsMenu.setOpen(false);
+                    return null;
+                  } catch (err) {
+                    return err instanceof Error ? err.message : "Could not open the project";
+                  }
+                }}
+              />
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-1 w-[260px] shrink-0">
@@ -1127,10 +1257,10 @@ export function StudioApp() {
         </footer>
       </div>
 
-      {/* Copilot floats above the canvas so it never squeezes the inspector. */}
+      {/* Copilot floats above the canvas (z-15) but under the toolbar menus (panel layer is z-20). */}
       {showAiCopilot && (
         <div
-          className={`fixed z-30 ${inspectorOpen ? "right-[318px]" : "right-2.5"} ${!dopeSheetExpanded ? "bottom-[66px] h-[min(560px,calc(100vh-140px))]" : timelineView === "curves" ? "bottom-[398px] h-[min(480px,calc(100vh-470px))]" : "bottom-[318px] h-[min(520px,calc(100vh-390px))]"} w-[360px] flex flex-col animate-panel-in`}
+          className={`fixed z-[15] ${inspectorOpen ? "right-[318px]" : "right-2.5"} ${!dopeSheetExpanded ? "bottom-[66px] h-[min(560px,calc(100vh-140px))]" : timelineView === "curves" ? "bottom-[398px] h-[min(480px,calc(100vh-470px))]" : "bottom-[318px] h-[min(520px,calc(100vh-390px))]"} w-[360px] flex flex-col animate-panel-in`}
         >
           <PanelBoundary name="Copilot" onError={() => autosave("error")}>
             <AiAgentPanel
@@ -1140,10 +1270,23 @@ export function StudioApp() {
                 setInspectorOpen(true);
                 setInspectorTab("budget");
               }}
+              onOpenProject={openProjectByName}
               onHidePane={() => setShowAiCopilot(false)}
             />
           </PanelBoundary>
         </div>
+      )}
+
+      {pendingOpen && (
+        <UnsavedChangesDialog
+          title={project.title}
+          nextTitle={pendingOpen.title}
+          error={pendingError}
+          busy={pendingBusy}
+          onSave={() => void resolvePending(true)}
+          onDiscard={() => void resolvePending(false)}
+          onCancel={() => setPendingOpen(null)}
+        />
       )}
 
       {recovery && (

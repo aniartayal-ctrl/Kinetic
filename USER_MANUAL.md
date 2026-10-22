@@ -51,7 +51,8 @@ Kinetic Pro uses an **iOS 26 / macOS 26 Liquid Glass** spatial layout modeled di
 | **`[` / `]`** | **Decrease / Increase Brush Size** | Resizes the Weight Brush (`B`) or Liquify Brush (`W`) radius from `15px` to `180px`. |
 | **`Space`** | **Play / Pause Animation** | Starts or pauses the active timeline clip. |
 | **`⌘Z` / `⇧⌘Z`** | **Undo / Redo** | Steps backward or forward through the **History** stack (up to 25 snapshots). |
-| **`⌘S`** | **Save Project** | Saves `<id>.project.json` to disk (`public/presets/` and `exports/`) and browser `localStorage`. |
+| **`⌘S`** | **Save Project** | Saves `projects/<id>/<id>.project.json` (previous 10 versions in `projects/<id>/backups/`). Shipped presets are never overwritten. |
+| **`⌘O`** | **Open Project** | Lists saved projects and built-in templates; asks before discarding unsaved changes. |
 | **`⌘` / `?`** | **Open Interactive User Manual** | Opens the built-in interactive guide with **"Try It Live"** buttons. |
 
 ---

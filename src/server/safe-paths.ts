@@ -35,7 +35,7 @@ export function toSafeProjectId(raw: string | null | undefined, fallback = "cust
   const slug = (raw ?? "")
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/^[-_]+|[-_]+$/g, "")
     .slice(0, 64);
   return slug.length > 0 ? slug : fallback;
 }

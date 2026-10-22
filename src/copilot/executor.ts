@@ -13,7 +13,14 @@ import type { CurveType } from "@/core/schema";
 import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
 
 export type ActionResult = { action: CopilotAction; ok: boolean; message: string };
-export type ExecutorHost = { exportBundle: () => Promise<void>; save: () => Promise<void>; openBudget: () => void };
+export type ExecutorHost = {
+  exportBundle: () => Promise<void>;
+  /** Resolves false when the save did not reach disk. */
+  save: () => Promise<boolean>;
+  openBudget: () => void;
+  /** Opens a project by (partial) name; no name shows the project list. Returns a status line. */
+  openProject: (name?: string) => Promise<string>;
+};
 
 const OVERLAY_KEYS = {
   bones: "showBones",
@@ -324,8 +331,10 @@ async function runOne(action: CopilotAction, host: ExecutorHost): Promise<string
       s.redo();
       return "Redone";
     case "save":
-      await host.save();
-      return "Saved";
+      if (!(await host.save())) fail("Not saved. The message under the title says why.");
+      return "Saved to the projects folder";
+    case "open_project":
+      return await host.openProject(str(a.name)?.trim() || undefined);
     case "export":
       await host.exportBundle();
       return "Bundle built";

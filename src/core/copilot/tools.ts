@@ -62,7 +62,8 @@ export const COPILOT_TOOLS: ToolSpec[] = [
   { name: "check_budget", args: "{}", does: "Open the performance budget." },
   { name: "undo", args: "{}", does: "Undo." },
   { name: "redo", args: "{}", does: "Redo." },
-  { name: "save", args: "{}", does: "Save the project." },
+  { name: "save", args: "{}", does: "Save the project into the projects folder." },
+  { name: "open_project", args: "{ name? }", does: "Open a saved project or built-in template by name; without a name, show the list." },
   { name: "export", args: "{}", does: "Build the Unity bundle." },
 ];
 

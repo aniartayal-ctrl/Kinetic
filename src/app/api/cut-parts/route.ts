@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
-import { resolveInside, toSafeProjectId } from "@/server/safe-paths";
+import { projectAssetsDir } from "@/server/projects";
+import { toSafeProjectId } from "@/server/safe-paths";
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // 200 MB covers large layered PSDs
 
@@ -28,7 +29,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Cut config is not valid JSON" }, { status: 400 });
     }
 
-    const outDir = resolveInside(path.join(process.cwd(), "public", "presets"), projectId);
+    // Imports live with the user's project, never in the shipped presets folder.
+    const outDir = projectAssetsDir(projectId);
+    const assetUrl = (file: string) => `/api/projects/${projectId}/assets/${file.split("/").map(encodeURIComponent).join("/")}`;
     mkdirSync(outDir, { recursive: true });
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -44,7 +47,8 @@ export async function POST(request: Request) {
         timeout: 5 * 60 * 1000,
       });
       const parsed = JSON.parse(stdout);
-      return NextResponse.json({ projectId, ...parsed });
+      for (const p of parsed.parts ?? []) p.src = assetUrl(p.src);
+      return NextResponse.json({ projectId, heroSrc: assetUrl("source.psd"), ...parsed });
     } else {
       const cfgPath = path.join(outDir, "cut-config.json");
       writeFileSync(cfgPath, configRaw);
@@ -53,14 +57,8 @@ export async function POST(request: Request) {
         timeout: 5 * 60 * 1000,
       });
       const parsed = JSON.parse(stdout);
-      for (const p of parsed.parts ?? []) {
-        p.src = `/presets/${projectId}/${p.src}`;
-      }
-      return NextResponse.json({
-        projectId,
-        heroSrc: `/presets/${projectId}/source.png`,
-        ...parsed,
-      });
+      for (const p of parsed.parts ?? []) p.src = assetUrl(p.src);
+      return NextResponse.json({ projectId, heroSrc: assetUrl("source.png"), ...parsed });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Part cutter failed";

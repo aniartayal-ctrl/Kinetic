@@ -143,6 +143,61 @@ await step("help", async () => {
   await page.keyboard.press("Escape");
 });
 
+await step("projects", async () => {
+  const titleButton = () => page.getByRole("button", { name: /^Project:/ });
+  const status = () => page.getByRole("button", { name: /^Save\./ }).getAttribute("aria-label");
+  await page.locator("body").click({ position: { x: 800, y: 300 } });
+
+  // ⌘S lands in projects/, not in the shipped presets.
+  await page.keyboard.press("Control+s");
+  await page.waitForTimeout(1200);
+  const { projects } = await (await page.request.get(`${URL}/api/projects`)).json();
+  if (!projects?.some((p) => p.id === "astral-forge")) throw new Error("save did not appear in /api/projects");
+  if (!/Saved/.test(await status())) throw new Error(`status after save: ${await status()}`);
+
+  // An edit marks the document as edited; opening a template asks first.
+  await page.keyboard.press("Shift+S");
+  await page.waitForTimeout(200);
+  if (!/Edited/.test(await status())) throw new Error(`status after edit: ${await status()}`);
+  await page.keyboard.press("Control+o");
+  await click(page.getByRole("menuitem", { name: /Sands of Solara/ }));
+  await click(page.getByRole("button", { name: /Don.t Save/ }));
+  await page.waitForTimeout(800);
+  if (!/Solara/i.test((await titleButton().getAttribute("aria-label")) ?? "")) throw new Error("template did not open");
+  if (SHOTS) {
+    await click(titleButton());
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${SHOTS}/projects-menu.png` });
+    await page.keyboard.press("Escape");
+  }
+
+  // Reopen the saved project from the menu; it opens clean.
+  await click(titleButton());
+  await click(page.getByRole("menuitem", { name: /Astral Forge \(Star-Smith\)/ }));
+  await page.waitForTimeout(800);
+  if (!/Astral/.test((await titleButton().getAttribute("aria-label")) ?? "")) throw new Error("saved project did not reopen");
+  if (/Edited/.test(await status())) throw new Error("freshly opened project shows as edited");
+
+  // Copilot path: an edit, then "open project sands" shows the prompt; Cancel keeps the work.
+  await page.keyboard.press("Shift+S");
+  const box = page.getByRole("textbox", { name: "Ask Copilot" });
+  if (!(await box.count())) await click(page.getByRole("button", { name: /Toggle AI copilot/ }));
+  await box.fill("open project sands");
+  await box.press("Enter");
+  await page.getByRole("alertdialog").waitFor({ timeout: 4000 });
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/unsaved-dialog.png` });
+  await click(page.getByRole("button", { name: "Cancel" }));
+  if (!/Astral/.test((await titleButton().getAttribute("aria-label")) ?? "")) throw new Error("Cancel still switched projects");
+
+  // Malformed requests are rejected cleanly.
+  const bad = await page.request.get(`${URL}/api/projects/..%2F..%2Fpackage`);
+  if (bad.status() !== 400 && bad.status() !== 404) throw new Error(`path traversal returned ${bad.status()}`);
+  const missing = await page.request.get(`${URL}/api/projects/does-not-exist`);
+  if (missing.status() !== 404) throw new Error(`missing project returned ${missing.status()}`);
+  const notJson = await page.request.post(`${URL}/api/projects`, { data: "nope", headers: { "content-type": "text/plain" } });
+  if (notJson.status() !== 400) throw new Error(`non-JSON save returned ${notJson.status()}`);
+});
+
 await step("autosave", async () => {
   const ctx2 = await browser.newContext({ viewport: { width: 1400, height: 900 } });
   const p2 = await ctx2.newPage();

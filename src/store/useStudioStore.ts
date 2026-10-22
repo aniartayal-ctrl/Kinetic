@@ -124,6 +124,8 @@ type StudioState = {
   // Core Actions
   loadPreset: (id: string) => void;
   setProject: (project: SpineForgeProject, historyLabel?: string) => void;
+  /** Replaces the document: resets selection, clip, playhead and undo history. */
+  openProject: (project: SpineForgeProject, historyLabel: string) => void;
   setMode: (mode: StudioMode) => void;
   selectBone: (name: string | null) => void;
   selectPart: (name: string | null) => void;
@@ -301,17 +303,25 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const factory = BUILTIN_PRESETS[id];
     if (!factory) return;
     const project = factory();
+    get().openProject(project, `Loaded ${project.title}`);
+  },
+
+  openProject: (project, historyLabel) => {
     const { report } = inferVisualPhysics(project, "auto_detect");
+    const clips = Object.keys(project.animations);
     set({
       project,
-      selectedBone: project.bones[1]?.name ?? "root",
+      selectedBone: project.bones[1]?.name ?? project.bones[0]?.name ?? "root",
       selectedPart: project.parts.find((p) => p.skin && p.skin.length > 1)?.name ?? project.parts[0]?.name ?? null,
-      activeClip: "strike",
+      activeClip: project.animations.strike ? "strike" : (clips[0] ?? "idle"),
       activeSkinName: "default",
       currentTime: 0,
+      isPlaying: false,
       hiddenParts: [],
+      lockedBones: [],
+      poseClipboard: null,
       physicsReport: report,
-      history: [makeSnapshot(`Loaded ${project.title}`, project)],
+      history: [makeSnapshot(historyLabel, project)],
       historyIndex: 0,
     });
   },

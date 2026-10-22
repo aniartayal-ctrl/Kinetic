@@ -202,7 +202,7 @@ export function UserManualModal({
                   { key: "K  G", name: "Timeline", desc: "K opens the dope sheet (drag keys to retime, Delete removes). G opens the graph editor with bezier handles." },
                   { key: "⌘C  ⌘V", name: "Pose Clipboard", desc: "Copy the whole pose at the playhead and paste it as keys anywhere. Breakdown keys in-betweens at any percentage." },
                   { key: "I  C  Tab", name: "Panels", desc: "I toggles the inspector, C the copilot, Tab hides every panel." },
-                  { key: "⌘Z  ⌘S", name: "Undo and Save", desc: "Up to 100 undo steps in the History tab (⇧⌘Z to redo). ⌘S saves to disk." },
+                  { key: "⌘Z  ⌘S  ⌘O", name: "Undo, Save, Open", desc: "Up to 100 undo steps (⇧⌘Z redo). ⌘S saves to the projects folder with backups; ⌘O opens a saved project or template." },
                 ].map((item) => (
                   <div key={item.key} className="p-3 rounded-2xl liquid-glass-well flex items-start gap-3">
                     <span className="px-2 py-1 rounded-[6px] bg-[var(--fill-2)] text-[12px] font-semibold text-[var(--label)] whitespace-nowrap shrink-0">

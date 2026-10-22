@@ -65,13 +65,19 @@ npm run export:cli -- all
 
 ### Copilot: run the whole studio in plain words
 
-Open with **C**. The built-in planner works offline; Claude, ChatGPT or Grok can be used with a key. Every feature is a copilot tool: selection, tools, overlays, playback, auto-rig, bones, pivots, IK, physics, bone locks, mesh density and weight solvers, warp reset, keys, breakdowns, pose copy/paste, curves, retiming, fps, looping, clip generation, physics baking, Unity events, skins, budget, undo/redo, save and export (31 tools, `src/core/copilot/tools.ts`). Chain steps with "then":
+Open with **C**. The built-in planner works offline; Claude, ChatGPT or Grok can be used with a key. Every feature is a copilot tool: selection, tools, overlays, playback, auto-rig, bones, pivots, IK, physics, bone locks, mesh density and weight solvers, warp reset, keys, breakdowns, pose copy/paste, curves, retiming, fps, looping, clip generation, physics baking, Unity events, skins, budget, undo/redo, save, open project and export (32 tools, `src/core/copilot/tools.ts`). Chain steps with "then":
 
 > mesh the body dense with heat weights, add physics to the cape, then make it snappier
 
 Each step reports ✓ or ✕ with the reason; invalid names or values are rejected without touching the rig.
 
 **Animation coach.** The copilot reviews the open clip against the principles of animation and shows cue cards with one-click fixes: slow in and slow out (eases linear moves), anticipation (adds a wind-up before the biggest move), follow-through (overshoot and settle), squash and stretch on impact, secondary action (physics on capes, hair, tails), exaggeration, keys between frames, loop seams, and even timing. The badge on the copilot button counts open suggestions. "Fix everything" applies them all as one undo step.
+
+### Projects
+
+**⌘S** saves to `projects/<id>/<id>.project.json` in the Kinetic folder (set `KINETIC_PROJECTS_DIR` to put it elsewhere, e.g. a synced drive). The shipped templates in `public/presets` are never written. Saves are atomic, and the previous 10 versions are kept in `projects/<id>/backups/`. PSD/PNG imports go to `projects/<id>/assets/`.
+
+**⌘O**, or a click on the document title, lists saved projects and the built-in templates. Opening a project with unsaved changes asks to Save, Don't Save or Cancel; the title shows "Edited" until you save. The copilot can do the same: "save", "open project sands", "show my projects". The `projects/` folder is git-ignored so saves never show up as code changes. The Mac app can load these files from its Open dialog.
 
 ### Autosave and recovery
 
@@ -99,6 +105,7 @@ The copilot works offline with its built-in planner. To use a cloud model, paste
 | E / ⌘E | Export | ⌘S | Save |
 | S / ⇧S | Key selected bone / all bones | , . | Previous / next key |
 | G | Graph editor | ⌘C / ⌘V | Copy / paste pose |
+| ⌘O | Open project | ⌘S | Save to projects/ |
 | Delete | Delete selected key | ⌥-click key | Delete key |
 
 ### Animation tools

@@ -24,11 +24,13 @@ export function AiAgentPanel({
   onExport,
   onSave,
   onOpenBudget,
+  onOpenProject,
   onHidePane,
 }: {
   onExport: () => Promise<void>;
-  onSave: () => Promise<void>;
+  onSave: () => Promise<boolean>;
   onOpenBudget: () => void;
+  onOpenProject: (name?: string) => Promise<string>;
   onHidePane?: () => void;
 }) {
   const project = useStudioStore((s) => s.project);
@@ -46,7 +48,7 @@ export function AiAgentPanel({
 
   const cards = useMemo(() => reviewClip(project, activeClip), [project, activeClip]);
   const fixable = cards.filter((c) => c.apply).length;
-  const host: ExecutorHost = { exportBundle: onExport, save: onSave, openBudget: onOpenBudget };
+  const host: ExecutorHost = { exportBundle: onExport, save: onSave, openBudget: onOpenBudget, openProject: onOpenProject };
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });

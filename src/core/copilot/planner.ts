@@ -105,6 +105,12 @@ function planClause(c: string, ctx: CopilotContext): CopilotAction[] {
   if (/^(please\s+)?undo\b/.test(c)) return [act("undo", {}, "Undo")];
   if (/^(please\s+)?redo\b/.test(c)) return [act("redo", {}, "Redo")];
   if (/\bsave\b/.test(c) && !/\bsave (a |the )?pose/.test(c)) return [act("save", {}, "Save project")];
+  const openNamed = c.match(/\b(?:open|load|switch to)\s+(?:the\s+)?(.+?)\s+project\b/);
+  const openList = c.match(/\b(?:open|load|switch to|show|list)\s+(?:my\s+|the\s+|a\s+)?(?:saved\s+)?projects?\b\s*(?:called|named)?\s*(.*)$/);
+  if (openList || openNamed) {
+    const name = (openList?.[1] || openNamed?.[1] || "").trim();
+    return [act("open_project", name ? { name } : {}, name ? `Open project ${name}` : "Show projects")];
+  }
   if (/\b(export|ship|build (the )?(unity )?bundle)\b/.test(c)) return [act("export", {}, "Build Unity bundle")];
   if (/\b(budget|performance|optimi[sz]e|draw calls|texture memory|too heavy)\b/.test(c)) return [act("check_budget", {}, "Open budget")];
 

@@ -12,3 +12,6 @@ unity-verify/Obj/
 
 # Build artifacts
 *.tsbuildinfo
+
+# Your saved projects and imports (see README > Projects). Remove this line to version them with git.
+/projects/
