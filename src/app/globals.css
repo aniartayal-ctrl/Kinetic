@@ -261,6 +261,10 @@ body {
   opacity: 1;
   transition-delay: 0.45s;
 }
+/* F1 (as in Spine): tooltips without the hover delay. */
+.instant-tips [data-tip]:hover::after {
+  transition-delay: 0s;
+}
 /* No tooltip while the button's own menu is open. */
 [data-tip][aria-haspopup][aria-pressed="true"]::after {
   display: none;

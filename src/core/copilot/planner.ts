@@ -258,10 +258,15 @@ function planClause(c: string, ctx: CopilotContext): CopilotAction[] {
   if (skin) return [act("set_skin_variant", { skinName: skin }, `Skin ${skin}`)];
 
   // Tools and selection.
-  const mode = c.match(/\b(?:open|switch to|go to|use)\s+(?:the\s+)?(import|auto rig|auto|rig|bones?|mesh|weight paint|weights?|pose|animate|warp|liquify|export)\b/)?.[1];
+  const mode = c.match(
+    /\b(?:open|switch to|go to|use)\s+(?:the\s+)?(import|auto rig|auto|rig|bones?|create|mesh|weight paint|weights?|pose|rotate|translate|move|scale|animate|warp|liquify|export)\b/,
+  )?.[1];
   if (mode) {
-    const map: Record<string, string> = { "auto rig": "auto", bone: "rig", bones: "rig", "weight paint": "weights", weight: "weights", pose: "animate", warp: "liquify" };
-    return [...out, act("set_mode", { mode: map[mode] ?? mode }, `Open ${mode}`)];
+    // Spine's tool names map onto Kinetic's: Create = Bones & IK, Rotate/Translate/Scale = Pose sub-tools.
+    const transform: Record<string, string> = { pose: "pose", rotate: "rotate", translate: "translate", move: "translate", scale: "scale" };
+    const map: Record<string, string> = { "auto rig": "auto", bone: "rig", bones: "rig", create: "rig", "weight paint": "weights", weight: "weights", warp: "liquify" };
+    const args = transform[mode] ? { mode: "animate", tool: transform[mode] } : { mode: map[mode] ?? mode };
+    return [...out, act("set_mode", args, `Use ${mode}`)];
   }
   if (/\bselect\b/.test(c) && (bones.length > 0 || parts.length > 0)) {
     return [act("select", { ...(bones[0] ? { bone: bones[0] } : {}), ...(parts[0] ? { part: parts[0] } : {}) }, `Select ${bones[0] ?? parts[0]}`)];

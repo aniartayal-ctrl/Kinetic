@@ -106,3 +106,11 @@ test("keyPreservingShape splits an eased segment without changing the motion", a
   assert.equal(keyPreservingShape([{ time: 0, r: 0, curve: "stepped" }, { time: 1, r: 5 }], 0.5)[1]!.curve, "stepped");
   assert.equal(keyPreservingShape([{ time: 0, r: 0 }, { time: 1, r: 5 }], 0.5)[1]!.r, 2.5);
 });
+
+test("ripple move shifts later keys together and stops at the neighbours", async () => {
+  const { rippleMoveKey } = await import("./keyframes");
+  const t: TransformKey[] = [{ time: 0, r: 0 }, { time: 0.5, r: 1 }, { time: 1, r: 2 }, { time: 1.5, r: 3 }];
+  assert.deepEqual(rippleMoveKey(t, 1, 0.75, 2).track.map((k) => k.time), [0, 0.75, 1.25, 1.75]);
+  assert.deepEqual(rippleMoveKey(t, 1, 1.9, 2).track.map((k) => k.time), [0, 1, 1.5, 2], "stops at clip end");
+  assert.equal(rippleMoveKey(t, 1, -1, 2).track[1]!.time, 0.001, "stops after the previous key");
+});

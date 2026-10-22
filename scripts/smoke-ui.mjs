@@ -33,12 +33,12 @@ const alive = async (where) => {
 };
 const click = (loc) => loc.click({ timeout: 4000 });
 
-await page.goto(URL, { waitUntil: "networkidle" });
+await page.goto(`${URL}/?test`, { waitUntil: "networkidle" });
 await page.waitForTimeout(1200);
 await page.keyboard.press("Space"); // pause playback for stable interaction
 
 await step("tools", async () => {
-  for (const name of ["Import", "Auto Rig", "Bones & IK", "Mesh", "Weight Paint", "Pose", "Warp", "Export"]) {
+  for (const name of ["Import", "Auto Rig", "Bones & IK", "Mesh", "Weight Paint", "Pose", "Rotate", "Translate", "Scale", "Warp", "Export"]) {
     await page.getByRole("button", { name, exact: true }).click({ timeout: 4000, noWaitAfter: true });
     await page.waitForTimeout(name === "Export" ? 9000 : 250); // the server bakes atlas + sprite sheet
     await alive(`tool ${name}`);
@@ -66,7 +66,7 @@ await step("inspector", async () => {
 });
 
 await step("clips and timeline", async () => {
-  await page.keyboard.press("k");
+  await page.keyboard.press("t");
   const options = await page.locator('select[aria-label="Animation clip"] option').allTextContents();
   for (const clip of [...new Set([options[0], options[Math.floor(options.length / 2)], options.at(-1), "strike"])].filter(Boolean)) {
     await page.selectOption('select[aria-label="Animation clip"]', clip);
@@ -85,11 +85,95 @@ await step("clips and timeline", async () => {
 
 await step("shortcuts", async () => {
   await page.locator("body").click({ position: { x: 800, y: 300 } });
-  for (const key of ["o", "a", "p", "m", "b", "v", "w", "i", "i", "g", "k", "s", "Shift+S", "Period", "Comma", "ArrowRight", "ArrowLeft", "[", "]", "Space", "Space", "Tab", "Tab", "Control+z", "Control+Shift+z", "Control+c", "Control+v"]) {
+  // Every binding in src/core/keymap.ts, plus the Spine keys Kinetic explains instead of supporting.
+  const keys = ["o", "Shift+A", "n", "m", "Shift+W", "b", "c", "v", "x", "Shift+L", "c", "ArrowLeft", "Shift+ArrowRight", "ArrowUp", "ArrowDown",
+    "k", "l", "Control+l", "Control+Shift+L", "d", "d", "a", "a", "Space", "Space", "q", "e", "w", "s", "r", "Shift+R", "f", "Shift+F",
+    "Control+r", "Control+r", "h", "h", "Equal", "Minus", "Shift+Equal", "Shift+Minus", "Control+z", "Control+Shift+z", "Control+y",
+    "Control+c", "Control+v", "i", "i", "Control+k", "Control+k", "t", "g", "g", "Tab", "Tab", "[", "]", "F1", "F1", "z", "p", "F2", "?", "Escape"];
+  for (const key of keys) {
     await page.keyboard.press(key);
     await page.waitForTimeout(60);
   }
   await alive("shortcuts");
+});
+
+await step("spine keys", async () => {
+  const T = (fn, ...args) => page.evaluate(([f, a]) => window.__kineticTest[f](...a), [fn, args]);
+  const expect = (cond, msg) => {
+    if (!cond) throw new Error(msg);
+  };
+  await page.locator("body").click({ position: { x: 800, y: 300 } });
+  for (const [key, tool] of [["c", "rotate"], ["v", "translate"], ["x", "scale"], ["b", "pose"]]) {
+    await page.keyboard.press(key);
+    const st = await T("state");
+    expect(st.mode === "animate" && st.transformTool === tool, `${key} gave ${st.mode}/${st.transformTool}`);
+  }
+  await page.keyboard.press("n");
+  expect((await T("state")).mode === "rig", "N did not open Bones & IK");
+
+  // Time keys (Spine: Q start, R/F frames, ⇧ = 10, E last key, W/S keys)
+  await page.keyboard.press("c");
+  const { fps } = await T("state");
+  const at = async () => (await T("state")).currentTime;
+  await page.keyboard.press("q");
+  expect((await at()) === 0, "Q did not jump to start");
+  await page.keyboard.press("r");
+  expect(Math.abs((await at()) - 1 / fps) < 1e-3, "R did not step one frame");
+  await page.keyboard.press("Shift+R");
+  expect(Math.abs((await at()) - 11 / fps) < 1e-3, "Shift+R did not step ten frames");
+  await page.keyboard.press("f");
+  expect(Math.abs((await at()) - 10 / fps) < 1e-3, "F did not step back");
+  await page.keyboard.press("e");
+  const last = await at();
+  expect(last > 0, "E did not jump to the last key");
+  await page.keyboard.press("q");
+  await page.keyboard.press("w");
+  const next = await at();
+  expect(next > 0 && next <= last, "W did not go to the next key");
+  await page.keyboard.press("s");
+  expect((await at()) < next, "S did not go to the previous key");
+
+  // Playback (Spine: D forward, A backward, again to stop)
+  await page.keyboard.press("d");
+  let st = await T("state");
+  expect(st.isPlaying && st.playDirection === 1, "D did not play forward");
+  await page.keyboard.press("d");
+  expect(!(await T("state")).isPlaying, "D did not stop");
+  await page.keyboard.press("a");
+  st = await T("state");
+  expect(st.isPlaying && st.playDirection === -1, "A did not play backward");
+  await page.keyboard.press("a");
+  expect(!(await T("state")).isPlaying, "A did not stop");
+
+  // ⌘R loop toggle and the explanation for unsupported Spine keys
+  const loop0 = (await T("state")).loop;
+  await page.keyboard.press("Control+r");
+  expect((await T("state")).loop === !loop0, "Ctrl+R did not toggle looping");
+  await page.keyboard.press("Control+r");
+  await page.keyboard.press("z");
+  await page.getByRole("status").filter({ hasText: "Shear" }).waitFor({ timeout: 3000 });
+
+  // A translate drag in the viewport keys a whole frame and is exactly one undo step.
+  await page.keyboard.press("v");
+  await page.keyboard.press("q");
+  for (let i = 0; i < 5; i++) await page.keyboard.press("r");
+  const before = (await T("state")).historyIndex;
+  const p = await T("boneScreen", "chest");
+  expect(p, "chest bone not found on screen");
+  await page.mouse.move(p.x, p.y);
+  await page.mouse.down();
+  await page.mouse.move(p.x + 40, p.y + 12, { steps: 15 });
+  await page.mouse.up();
+  const afterDrag = (await T("state")).historyIndex;
+  expect(afterDrag === before + 1, `drag made ${afterDrag - before} undo steps`);
+  const key = (await T("boneKeys", "chest")).find((k) => Math.abs(k.time - 5 / fps) < 1e-3);
+  expect(key && Math.abs(key.x ?? 0) > 1, "drag did not key chest's translation on frame 5");
+  await page.keyboard.press("Control+z");
+  expect((await T("state")).historyIndex === before, "one undo did not revert the whole drag");
+
+  // Right-click on the canvas returns to the previous tool, as in Spine.
+  await page.mouse.click(p.x, p.y, { button: "right" });
+  expect((await T("state")).transformTool === "rotate", "right-click did not return to the previous tool");
 });
 
 await step("copilot", async () => {
@@ -156,7 +240,7 @@ await step("projects", async () => {
   if (!/Saved/.test(await status())) throw new Error(`status after save: ${await status()}`);
 
   // An edit marks the document as edited; opening a template asks first.
-  await page.keyboard.press("Shift+S");
+  await page.keyboard.press("Control+Shift+L");
   await page.waitForTimeout(200);
   if (!/Edited/.test(await status())) throw new Error(`status after edit: ${await status()}`);
   await page.keyboard.press("Control+o");
@@ -179,7 +263,7 @@ await step("projects", async () => {
   if (/Edited/.test(await status())) throw new Error("freshly opened project shows as edited");
 
   // Copilot path: an edit, then "open project sands" shows the prompt; Cancel keeps the work.
-  await page.keyboard.press("Shift+S");
+  await page.keyboard.press("Control+Shift+L");
   const box = page.getByRole("textbox", { name: "Ask Copilot" });
   if (!(await box.count())) await click(page.getByRole("button", { name: /Toggle AI copilot/ }));
   await box.fill("open project sands");
@@ -207,7 +291,7 @@ await step("autosave", async () => {
   await p2.waitForTimeout(800);
   await p2.evaluate(() => localStorage.removeItem("kinetic-pro:autosave"));
   await p2.locator("body").click({ position: { x: 700, y: 300 } });
-  await p2.keyboard.press("Shift+S"); // make a change
+  await p2.keyboard.press("Control+Shift+L"); // key every bone: a real change to autosave
   await p2.clock.fastForward("05:05");
   const saved = await p2.evaluate(() => localStorage.getItem("kinetic-pro:autosave"));
   if (!saved) throw new Error("no autosave after 5 minutes");

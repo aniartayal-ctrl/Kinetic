@@ -124,10 +124,12 @@ async function runOne(action: CopilotAction, host: ExecutorHost): Promise<string
     case "set_mode": {
       const mode = str(a.mode) as StudioMode;
       if (!MODES.includes(mode)) fail(`Unknown tool ${String(a.mode)}`);
+      const tool = str(a.tool);
+      if (tool !== undefined && !["pose", "rotate", "translate", "scale"].includes(tool)) fail(`Unknown transform tool ${tool}`);
       if (mode === "auto") s.runOneClickAutoRig();
       if (mode === "export") await host.exportBundle();
-      else s.setMode(mode);
-      return `Opened ${mode}`;
+      else s.chooseTool(mode, tool as "pose" | "rotate" | "translate" | "scale" | undefined);
+      return tool ? `${tool[0]!.toUpperCase()}${tool.slice(1)} tool` : `Opened ${mode}`;
     }
     case "toggle_overlay": {
       const key = OVERLAY_KEYS[str(a.overlay) as keyof typeof OVERLAY_KEYS] ?? fail(`Unknown overlay ${String(a.overlay)}`);

@@ -65,6 +65,8 @@ test("every feature area is reachable in plain English", () => {
     ["save", ["save"]],
     ["export", ["export"]],
     ["open project sands", ["open_project"]],
+    ["use the rotate tool", ["set_mode"]],
+    ["switch to scale", ["set_mode"]],
     ["open the astral forge project", ["open_project"]],
     ["show my projects", ["open_project"]],
   ];
@@ -72,6 +74,11 @@ test("every feature area is reachable in plain English", () => {
   // Every emitted tool exists in the catalog.
   for (const [prompt] of cases) for (const a of planCommand(prompt, ctx).actions) assert.ok(TOOL_NAMES.has(a.tool), a.tool);
   assert.ok(COPILOT_TOOLS.length >= 30);
+});
+
+test("Spine tool names map to Kinetic tools", () => {
+  assert.deepEqual(planCommand("use the rotate tool", ctx).actions[0]!.args, { mode: "animate", tool: "rotate" });
+  assert.deepEqual(planCommand("use the create tool", ctx).actions[0]!.args, { mode: "rig" });
 });
 
 test("project requests carry the name the user typed", () => {

@@ -208,3 +208,32 @@ export function keyPreservingShape(track: TransformKey[], time: number): Transfo
   const withLeft = track.map((k, i) => (i === prevIdx ? { ...k, curve: split.left } : k));
   return upsertKey(withLeft, { ...key, curve: split.right }).track;
 }
+
+/** Writes channel values into the key at `time`, inserting a shape-preserving key first if needed. */
+export function patchKeyAt(track: TransformKey[], time: number, patch: Partial<Record<Channel, number>>): TransformKey[] {
+  let next = keyPreservingShape(track, time);
+  const idx = next.findIndex((k) => Math.abs(k.time - time) <= SAME_TIME);
+  for (const [ch, value] of Object.entries(patch) as [Channel, number][]) {
+    if (Number.isFinite(value)) next = setKeyChannel(next, idx, ch, value);
+  }
+  return next;
+}
+
+/**
+ * Spine's ⌥-drag: moves key `index` and every later key by the same amount, keeping their spacing.
+ * The shift is limited so keys never pass the previous key or run past the clip's end.
+ */
+export function rippleMoveKey(
+  track: TransformKey[],
+  index: number,
+  newTime: number,
+  duration: number,
+  minGap = 1e-3,
+): { track: TransformKey[]; index: number } {
+  const key = track[index];
+  if (!key) return { track, index };
+  const prev = index > 0 ? track[index - 1]!.time + minGap : 0;
+  const last = track[track.length - 1]!.time;
+  const delta = Math.max(prev - key.time, Math.min(newTime - key.time, duration - last));
+  return { track: track.map((k, i) => (i >= index ? { ...k, time: Number((k.time + delta).toFixed(4)) } : k)), index };
+}

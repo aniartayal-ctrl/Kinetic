@@ -91,28 +91,39 @@ Work is autosaved to the browser every 5 minutes when something changed, and imm
 
 The copilot works offline with its built-in planner. To use a cloud model, paste a key in the copilot's **API** drawer or set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `XAI_API_KEY`. Default models are `claude-sonnet-5-5`, `gpt-5-mini` and `grok-4`; override them with `KINETIC_CLAUDE_MODEL`, `KINETIC_OPENAI_MODEL` or `KINETIC_XAI_MODEL`. If a cloud call fails, the reply says why and falls back to the built-in planner.
 
-### Keyboard
+### Keyboard (Spine defaults)
 
-| Key | Action | Key | Action |
+Shortcuts follow [Spine's default hotkeys](https://esotericsoftware.com/spine-cheat-sheet), so Spine muscle memory works. Kinetic-only tools use keys Spine leaves free. The full, always-current list is in the app (**?** → Shortcuts), generated from `src/core/keymap.ts`.
+
+| Spine key | Action | Spine key | Action |
 | --- | --- | --- | --- |
-| O | Import | Space | Play / pause |
-| A | Auto rig | ← → | Step one frame |
-| P | Bones & IK | K | Keyframe sheet |
-| M | Mesh | I | Inspector |
-| B | Weight paint (`[` `]` brush size) | C | Copilot |
-| V | Pose | Tab | Hide all panels |
-| W | Warp | ⌘Z / ⇧⌘Z | Undo / redo (100 steps) |
-| E / ⌘E | Export | ⌘S | Save |
-| S / ⇧S | Key selected bone / all bones | , . | Previous / next key |
-| G | Graph editor | ⌘C / ⌘V | Copy / paste pose |
-| ⌘O | Open project | ⌘S | Save to projects/ |
-| Delete | Delete selected key | ⌥-click key | Delete key |
+| B | Pose tool | D / A | Play forward / backward (press again to stop) |
+| C | Rotate (⇧ 15° steps) | Q / E | Jump to start / last key |
+| V | Translate (⇧ axis lock) | W / S | Next / previous key |
+| X | Scale (⇧ uniform) | R / F | Next / previous frame (⇧ = 10 frames) |
+| N | Bones & IK (Spine's Create) | ⌘R | Loop on / off |
+| ← → ↑ ↓ | Nudge (⇧ = 10×) | H | Hide / show selected layer |
+| K, ⌘L | Key selected bone | + / − | Draw order up / down (⇧ = 5) |
+| L | Key active transform (same as K: Kinetic keys whole bones) | ⌘Z / ⇧⌘Z, ⌘Y | Undo / redo |
+| ⇧⌘L | Key every bone | ⌘S / ⌘O / ⌘E | Save / open / export |
+| ⌘C / ⌘V | Copy / paste pose | F1 | Instant tooltips |
+| Right-click canvas | Previous tool | | |
+
+| Kinetic key | Action | Kinetic key | Action |
+| --- | --- | --- | --- |
+| O | Import | I | Inspector |
+| ⇧A | Auto Rig | ⌘K | Copilot |
+| M | Mesh | T / G | Dope sheet / graph editor |
+| ⇧W | Weight Paint (`[` `]` brush size) | Tab | Hide all panels |
+| ⇧L | Warp | Space | Play / pause (in Spine, Space deselects) |
+
+Dope sheet and graph editor (Spine-matched): drag a key to move it on frames, ⇧-drag to move freely, ⌥-drag to move it with every later key, double-click to delete; ⇧-drag the playhead to scrub between frames. Not yet available: shear (Z), set parent (P), rename (F2), selection history (PgUp/PgDn); pressing them says so.
 
 ### Animation tools
 
-- **Graph editor (G)**: rotation, move and scale curves per bone with bezier handles, frame-snapped key dragging (⇧ locks an axis) and curve presets. One curve per key, shared by its channels.
-- **Dope sheet (K)**: drag keys to retime on whole frames, click to jump, ⌥-click or Delete to remove.
-- **Breakdown**: key every bone (⇧ selected bone) at any percentage between its neighbouring poses, including overshoot.
+- **Graph editor (G)**: rotation, move and scale curves per bone with bezier handles, frame-snapped key dragging (⇧ free, ⌘ locks an axis, ⌥ moves later keys) and curve presets. One curve per key, shared by its channels.
+- **Dope sheet (T)**: drag keys to retime on whole frames (⇧ free, ⌥ moves later keys too), click to jump, double-click or Delete to remove.
+- **Breakdown**: key every bone (⇧-click: selected bone) at any percentage between its neighbouring poses, including overshoot.
 - **Pose clipboard**: ⌘C copies the full pose at the playhead, ⌘V pastes it as one undo step.
 - **Clip timing**: length (optionally stretching keys and events), 24/30/60 fps, loop.
 - Every drag is one undo step. Unity export bakes each clip at its own frame rate (at least 30 Hz) so short, snappy timing survives.

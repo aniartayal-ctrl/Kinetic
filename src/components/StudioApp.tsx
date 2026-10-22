@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { reviewClip } from "@/core/coach";
-import { keyPreservingShape } from "@/core/keyframes";
+import { sampleTransformTrack } from "@/core/animator";
+import { keyPreservingShape, patchKeyAt, snapTime } from "@/core/keyframes";
+import { commandForEvent, isMacPlatform, shortcutLabel, unsupportedHint, type CommandId } from "@/core/keymap";
 import type { SpineForgeProject } from "@/core/schema";
 import { RIG_BONE_PALETTE } from "@/core/schema";
 import { buildBrowserUnityExportBundle } from "@/exporters/browser-bundle-builder";
-import { useStudioStore, type StudioMode } from "@/store/useStudioStore";
+import { useStudioStore, type StudioMode, type TransformTool } from "@/store/useStudioStore";
 import { AiAgentPanel } from "./AiAgentPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { PanelBoundary } from "./PanelBoundary";
@@ -152,6 +154,24 @@ const ICON_PATHS: Record<string, ReactNode> = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
+  pose: (
+    <>
+      <circle cx="12" cy="4.5" r="2" />
+      <path d="M12 6.5v6.5M12 13l-4 7.5M12 13l4 7.5M6 9.5l6 1.5 6-1.5" />
+    </>
+  ),
+  rotate: (
+    <>
+      <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1" />
+      <path d="M20.5 3.5V8H16" />
+    </>
+  ),
+  scale: (
+    <>
+      <path d="M14 3.5h6.5V10M10 20.5H3.5V14" />
+      <path d="m20.5 3.5-7 7M3.5 20.5l7-7" />
+    </>
+  ),
 };
 
 function Icon({ name, size = 16 }: { name: string; size?: number }) {
@@ -174,29 +194,35 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
 
 /* ── Tool and view definitions ─────────────────────────────────────────────────────────────── */
 
-type ToolDef = { id: StudioMode; label: string; key: string };
+type ToolDef = { id: StudioMode; transform?: TransformTool; label: string; command: CommandId; icon: string };
 
-/** Tools grouped by workflow stage, top to bottom: set up → build the rig → animate → ship. */
+/** Tools grouped by workflow stage, top to bottom: set up → build the rig → animate → ship. Keys follow Spine. */
 const TOOL_GROUPS: ToolDef[][] = [
   [
-    { id: "import", label: "Import", key: "O" },
-    { id: "auto", label: "Auto Rig", key: "A" },
+    { id: "import", label: "Import", command: "tool.import", icon: "import" },
+    { id: "auto", label: "Auto Rig", command: "tool.autoRig", icon: "auto" },
   ],
   [
-    { id: "rig", label: "Bones & IK", key: "P" },
-    { id: "mesh", label: "Mesh", key: "M" },
-    { id: "weights", label: "Weight Paint", key: "B" },
+    { id: "rig", label: "Bones & IK", command: "tool.create", icon: "rig" },
+    { id: "mesh", label: "Mesh", command: "tool.mesh", icon: "mesh" },
+    { id: "weights", label: "Weight Paint", command: "tool.weights", icon: "weights" },
   ],
   [
-    { id: "animate", label: "Pose", key: "V" },
-    { id: "liquify", label: "Warp", key: "W" },
+    { id: "animate", transform: "pose", label: "Pose", command: "tool.pose", icon: "pose" },
+    { id: "animate", transform: "rotate", label: "Rotate", command: "tool.rotate", icon: "rotate" },
+    { id: "animate", transform: "translate", label: "Translate", command: "tool.translate", icon: "animate" },
+    { id: "animate", transform: "scale", label: "Scale", command: "tool.scale", icon: "scale" },
+    { id: "liquify", label: "Warp", command: "tool.warp", icon: "liquify" },
   ],
-  [{ id: "export", label: "Export", key: "E" }],
+  [{ id: "export", label: "Export", command: "file.export", icon: "export" }],
 ];
 
-const TOOL_LABEL: Record<StudioMode, string> = Object.fromEntries(
-  TOOL_GROUPS.flat().map((t) => [t.id, t.label]),
-) as Record<StudioMode, string>;
+const TOOL_BY_COMMAND = Object.fromEntries(TOOL_GROUPS.flat().map((t) => [t.command, t])) as Partial<Record<CommandId, ToolDef>>;
+
+function toolLabel(mode: StudioMode, transform: TransformTool): string {
+  const t = TOOL_GROUPS.flat().find((x) => x.id === mode && (!x.transform || x.transform === transform));
+  return t?.label ?? mode;
+}
 
 type OverlayKey =
   | "showBones"
@@ -309,7 +335,6 @@ export function StudioApp() {
     currentTime,
     isPlaying,
     playbackSpeed,
-    brushRadius,
     lockedBones,
     hiddenParts,
     history,
@@ -326,7 +351,6 @@ export function StudioApp() {
     jumpToHistory,
     runOneClickAutoRig,
     addBone,
-    setBrushRadius,
     toggleOverlay,
     toggleBoneLock,
     togglePartVisibility,
@@ -334,9 +358,8 @@ export function StudioApp() {
     addAnimationEventAtCurrentTime,
     deleteAnimationEvent,
     bakeCurrentClipSprings,
-    copyPose,
-    pastePose,
-    editActiveClip,
+    transformTool,
+    chooseTool,
   } = store;
 
   // Layout state. Copilot starts closed: the canvas is the content, panels are opt-in.
@@ -550,118 +573,261 @@ export function StudioApp() {
     }
   };
 
-  // Selecting the active tool again hides its options; selecting another tool opens them.
-  const handleSelectTool = (targetMode: StudioMode) => {
-    if (targetMode === "auto") runOneClickAutoRig();
-    if (targetMode === "export" && !exportData && !isExporting) {
+  // Clicking the active tool again hides its options; keyboard selection never changes the panels.
+  const handleSelectTool = (tool: ToolDef, fromKeyboard = false) => {
+    if (tool.id === "auto") runOneClickAutoRig();
+    if (tool.id === "export" && !exportData && !isExporting) {
       void handleRunExport();
       return;
     }
-    if (mode === targetMode && leftPaneOpen) {
+    const active = mode === tool.id && (!tool.transform || tool.transform === transformTool);
+    if (!fromKeyboard && active && leftPaneOpen) {
       setLeftPaneOpen(false);
-    } else {
-      setMode(targetMode);
-      setLeftPaneOpen(true);
+      return;
     }
+    chooseTool(tool.id, tool.transform);
+    if (!fromKeyboard) setLeftPaneOpen(true);
   };
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        void handleSaveProject();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-        return;
-      }
-      if (mod && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "v")) {
-        if (isTextEntry(e.target) || window.getSelection()?.toString()) return;
-        e.preventDefault();
-        if (e.key.toLowerCase() === "c") copyPose();
-        else pastePose();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "o") {
-        e.preventDefault();
-        projectsMenu.setOpen(true);
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "e") {
-        e.preventDefault();
-        void handleRunExport();
-        return;
-      }
-      if (mod || e.altKey) return;
-      if (isTextEntry(e.target)) return;
+  /* ── Keyboard: Spine's default hotkeys (src/core/keymap.ts) ─────────────────────────────────── */
+  const [mac, setMac] = useState(true);
+  const shiftDownRef = useRef(false);
+  const [hint, setHint] = useState<{ text: string; id: number } | null>(null);
+  const showHint = (text: string) => {
+    const id = Date.now();
+    setHint({ text, id });
+    window.setTimeout(() => setHint((h) => (h?.id === id ? null : h)), 2400);
+  };
+  const tip = (label: string, id: CommandId) => `${label}  ${shortcutLabel(id, mac)}`;
 
-      const key = e.key.toLowerCase();
-      const tool = TOOL_GROUPS.flat().find((t) => t.key.toLowerCase() === key);
-      if (tool) {
-        handleSelectTool(tool.id);
+  /** Keys the given bones at the playhead's frame without changing their motion. */
+  const keyBones = (bones: string[]) => {
+    const s = useStudioStore.getState();
+    const clip = s.project.animations[s.activeClip];
+    if (!clip || bones.length === 0) return;
+    const t = snapTime(s.currentTime, clip.fps || 30, clip.duration);
+    if (Math.abs(t - s.currentTime) > 1e-4) s.setCurrentTime(t);
+    s.editActiveClip((c) => {
+      const boneTracks = { ...c.boneTracks };
+      for (const b of bones) boneTracks[b] = keyPreservingShape(boneTracks[b] ?? [], t);
+      return { ...c, boneTracks };
+    }, bones.length === 1 ? `Keyed ${bones[0]} @ ${t.toFixed(2)}s` : `Keyed all bones @ ${t.toFixed(2)}s`);
+  };
+
+  /** Spine's arrow-key nudge: pivots in Bones & IK, otherwise the active transform at the playhead (⇧ = 10×). */
+  const nudge = (dx: number, dy: number, big: boolean) => {
+    const s = useStudioStore.getState();
+    const bone = s.selectedBone;
+    if (!bone) return;
+    const step = big ? 10 : 1;
+    if (s.mode === "rig") {
+      const b = s.project.bones.find((x) => x.name === bone);
+      if (!b) return;
+      const clamp01 = (v: number) => Math.max(0, Math.min(1, Number(v.toFixed(4))));
+      s.updateBone(bone, { x: clamp01(b.x + (dx * step) / s.project.width), y: clamp01(b.y + (dy * step) / s.project.height) });
+      return;
+    }
+    if (s.mode !== "animate") {
+      showHint("Arrow keys nudge in Pose tools (B C V X) and Bones & IK (N)");
+      return;
+    }
+    const clip = s.project.animations[s.activeClip];
+    if (!clip) return;
+    const t = snapTime(s.currentTime, clip.fps || 30, clip.duration);
+    if (Math.abs(t - s.currentTime) > 1e-4) s.setCurrentTime(t);
+    const tool = s.transformTool === "pose" ? (bone.startsWith("ik-") || bone === "root" ? "translate" : "rotate") : s.transformTool;
+    const p = sampleTransformTrack(clip.boneTracks[bone], t);
+    const patch =
+      tool === "rotate"
+        ? { r: p.r + (dx + dy) * step }
+        : tool === "translate"
+          ? { x: p.x + dx * step, y: p.y + dy * step }
+          : { sx: Math.max(0.01, p.sx + dx * step * 0.01), sy: Math.max(0.01, p.sy - dy * step * 0.01) };
+    s.editActiveClip((c) => ({ ...c, boneTracks: { ...c.boneTracks, [bone]: patchKeyAt(c.boneTracks[bone] ?? [], t, patch) } }), `Nudged ${bone}`);
+  };
+
+  const runCommand = (cmd: CommandId, e: KeyboardEvent) => {
+    const s = useStudioStore.getState();
+    const clip = s.project.animations[s.activeClip];
+    const fps = clip?.fps || 30;
+    const duration = clip?.duration ?? 1;
+    const goTo = (t: number) => {
+      s.setIsPlaying(false);
+      s.setCurrentTime(Math.max(0, Math.min(duration, Number(t.toFixed(4)))));
+    };
+    const keyTimes = (bones: string[]) =>
+      [...new Set(bones.flatMap((b) => (clip?.boneTracks[b] ?? []).map((k) => k.time)))].sort((x, y) => x - y);
+    const here = snapTime(s.currentTime, fps, duration);
+    const tool = TOOL_BY_COMMAND[cmd];
+    if (tool && cmd !== "file.export") {
+      handleSelectTool(tool, true);
+      return;
+    }
+    switch (cmd) {
+      case "brush.smaller":
+        return s.setBrushRadius(Math.max(15, s.brushRadius - 10));
+      case "brush.larger":
+        return s.setBrushRadius(Math.min(180, s.brushRadius + 10));
+      case "nudge.left":
+        return nudge(-1, 0, e.shiftKey);
+      case "nudge.right":
+        return nudge(1, 0, e.shiftKey);
+      case "nudge.up":
+        return nudge(0, -1, e.shiftKey);
+      case "nudge.down":
+        return nudge(0, 1, e.shiftKey);
+      case "key.selection":
+      case "key.activeTransform":
+        return keyBones(s.selectedBone ? [s.selectedBone] : []);
+      case "key.everything":
+        return keyBones(s.project.bones.map((b) => b.name));
+      case "play.forward":
+      case "play.backward": {
+        const dir = cmd === "play.forward" ? 1 : -1;
+        if (s.isPlaying && s.playDirection === dir) s.setIsPlaying(false);
+        else {
+          s.setPlayDirection(dir);
+          s.setIsPlaying(true);
+        }
         return;
       }
-      if (key === "s") {
-        // Key the selected bone (⇧ every bone) at the playhead; eased segments are split so motion is unchanged.
-        const bones = e.shiftKey ? project.bones.map((b) => b.name) : selectedBone ? [selectedBone] : [];
-        const t = Number(currentTime.toFixed(4));
-        editActiveClip((c) => {
-          const boneTracks = { ...c.boneTracks };
-          for (const b of bones) {
-            boneTracks[b] = keyPreservingShape(boneTracks[b] ?? [], t);
-          }
-          return { ...c, boneTracks };
-        }, e.shiftKey ? `Keyed all bones @ ${t.toFixed(2)}s` : `Keyed ${selectedBone} @ ${t.toFixed(2)}s`);
-      } else if (e.code === "Comma" || e.code === "Period") {
-        // Jump to the previous / next key of the selected bone (⇧ any bone).
-        const bones = e.shiftKey ? project.bones.map((b) => b.name) : selectedBone ? [selectedBone] : [];
-        const times = [...new Set(bones.flatMap((b) => (currentClipObj?.boneTracks[b] ?? []).map((k) => k.time)))].sort((a, b) => a - b);
-        const target =
-          e.code === "Period" ? times.find((t) => t > currentTime + 1e-4) : [...times].reverse().find((t) => t < currentTime - 1e-4);
-        if (target !== undefined) {
-          setIsPlaying(false);
-          setCurrentTime(target);
+      case "play.toggle":
+        if (s.isPlaying) s.setIsPlaying(false);
+        else {
+          s.setPlayDirection(1);
+          s.setIsPlaying(true);
         }
-      } else if (key === "c") setShowAiCopilot((v) => !v);
-      else if (key === "l" || key === "i") setInspectorOpen((v) => !v);
-      else if (key === "k" || key === "g") {
-        const view: TimelineView = key === "g" ? "curves" : "keys";
+        return;
+      case "time.start":
+        return goTo(0);
+      case "time.lastKey": {
+        const times = keyTimes(s.project.bones.map((b) => b.name));
+        return goTo(times.length > 0 ? times[times.length - 1]! : duration);
+      }
+      case "time.nextKey":
+      case "time.prevKey": {
+        const fwd = cmd === "time.nextKey";
+        const pick = (times: number[]) =>
+          fwd ? times.find((t) => t > s.currentTime + 1e-4) : [...times].reverse().find((t) => t < s.currentTime - 1e-4);
+        const target = pick(keyTimes(s.selectedBone ? [s.selectedBone] : [])) ?? pick(keyTimes(s.project.bones.map((b) => b.name)));
+        if (target !== undefined) goTo(target);
+        return;
+      }
+      case "time.nextFrame":
+        return goTo(here + 1 / fps);
+      case "time.prevFrame":
+        return goTo(here - 1 / fps);
+      case "time.next10":
+        return goTo(here + 10 / fps);
+      case "time.prev10":
+        return goTo(here - 10 / fps);
+      case "clip.toggleLoop":
+        if (!clip) return;
+        s.setClipTiming({ loop: !clip.loop });
+        return showHint(clip.loop ? "Loop off" : "Loop on");
+      case "layer.toggleVisibility":
+        if (s.selectedPart) s.togglePartVisibility(s.selectedPart);
+        return;
+      case "drawOrder.up":
+      case "drawOrder.down":
+      case "drawOrder.up5":
+      case "drawOrder.down5":
+        if (s.selectedPart) s.movePartLayerOrder(s.selectedPart, cmd.startsWith("drawOrder.up") ? "up" : "down", cmd.endsWith("5") ? 5 : 1);
+        return;
+      case "edit.undo":
+        return s.undo();
+      case "edit.redo":
+        return s.redo();
+      case "pose.copy":
+        s.copyPose();
+        return showHint("Pose copied");
+      case "pose.paste":
+        return s.pastePose();
+      case "file.save":
+        return void handleSaveProject();
+      case "file.open":
+        return projectsMenu.setOpen(true);
+      case "file.export":
+        return void handleRunExport();
+      case "panel.inspector":
+        return setInspectorOpen((v) => !v);
+      case "panel.copilot":
+        return setShowAiCopilot((v) => !v);
+      case "panel.timeline":
+      case "panel.graph": {
+        const view: TimelineView = cmd === "panel.graph" ? "curves" : "keys";
         if (dopeSheetExpanded && timelineView === view) setDopeSheetExpanded(false);
         else {
           setTimelineView(view);
           setDopeSheetExpanded(true);
         }
+        return;
       }
-      else if (e.key === "Tab") {
-        e.preventDefault();
+      case "panel.hideAll": {
         const anyOpen = leftPaneOpen || inspectorOpen || showAiCopilot;
         setLeftPaneOpen(!anyOpen);
         setInspectorOpen(!anyOpen);
         if (anyOpen) setShowAiCopilot(false);
-      } else if (e.key === "[") setBrushRadius(Math.max(15, brushRadius - 10));
-      else if (e.key === "]") setBrushRadius(Math.min(180, brushRadius + 10));
-      else if (e.key === "?" || e.key === "/") setShowUserManual((v) => !v);
-      else if (e.key === "Escape") setShowUserManual(false);
-      else if (e.key === " ") {
-        e.preventDefault();
-        setIsPlaying(!isPlaying);
-      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        // Step one frame at the clip's frame rate (and stop a focused slider from also moving).
-        e.preventDefault();
-        const fps = currentClipObj?.fps ?? 24;
-        const next = currentTime + (e.key === "ArrowRight" ? 1 : -1) / fps;
-        setIsPlaying(false);
-        setCurrentTime(Math.max(0, Math.min(clipDuration, Number(next.toFixed(4)))));
+        return;
       }
+      case "panel.help":
+        return setShowUserManual((v) => !v);
+      case "ui.instantTooltips": {
+        const on = document.documentElement.classList.toggle("instant-tips");
+        try {
+          localStorage.setItem("kinetic-pro:instant-tips", on ? "1" : "0");
+        } catch {
+          // per-browser convenience only
+        }
+        return showHint(on ? "Instant tooltips on" : "Instant tooltips off");
+      }
+    }
+  };
+  const runCommandRef = useRef(runCommand);
+  runCommandRef.current = runCommand;
+
+  useEffect(() => {
+    setMac(isMacPlatform());
+    try {
+      if (localStorage.getItem("kinetic-pro:instant-tips") === "1") document.documentElement.classList.add("instant-tips");
+    } catch {
+      // ignore
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      shiftDownRef.current = e.shiftKey;
+      if (e.defaultPrevented) return;
+      const cmd = commandForEvent(e);
+      if (isTextEntry(e.target)) {
+        // While typing only document commands fire; ⌘Z, ⌘C and letters belong to the text field.
+        if (cmd === "file.save" || cmd === "file.open" || cmd === "file.export") {
+          e.preventDefault();
+          runCommandRef.current(cmd, e);
+        }
+        return;
+      }
+      if (!cmd) {
+        if (e.key === "Escape") setShowUserManual(false);
+        else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          const text = unsupportedHint(e);
+          if (text) showHint(text);
+        }
+        return;
+      }
+      if ((cmd === "pose.copy" || cmd === "pose.paste") && window.getSelection()?.toString()) return; // copying text
+      e.preventDefault();
+      runCommandRef.current(cmd, e);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      shiftDownRef.current = e.shiftKey;
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brushRadius, isPlaying, leftPaneOpen, inspectorOpen, showAiCopilot, mode, project, redo, undo, currentTime, clipDuration, dopeSheetExpanded, timelineView]);
+  }, []);
 
   const handleDownloadZip = () => {
     if (!exportData?.zipBase64) return;
@@ -736,14 +902,14 @@ export function StudioApp() {
               <Icon name="sidebarLeft" size={17} />
             </button>
             <span className="w-px h-5 bg-[var(--separator-strong)] mx-1" />
-            <button className="icon-btn" onClick={undo} disabled={historyIndex <= 0} data-tip="Undo  ⌘Z" data-tip-side="bottom" aria-label="Undo">
+            <button className="icon-btn" onClick={undo} disabled={historyIndex <= 0} data-tip={tip("Undo", "edit.undo")} data-tip-side="bottom" aria-label="Undo">
               <Icon name="undo" />
             </button>
             <button
               className="icon-btn"
               onClick={redo}
               disabled={historyIndex >= history.length - 1}
-              data-tip="Redo  ⇧⌘Z"
+              data-tip={tip("Redo", "edit.redo")}
               data-tip-side="bottom"
               aria-label="Redo"
             >
@@ -760,7 +926,7 @@ export function StudioApp() {
               aria-pressed={projectsMenu.open}
               aria-label={`Project: ${project.title}`}
               className="flex items-center gap-1 max-w-full rounded-[6px] px-1.5 -mb-px text-[13px] font-semibold text-[var(--label)] hover:bg-[var(--fill-3)] transition-colors"
-              data-tip="Open project  ⌘O"
+              data-tip={tip("Open project", "file.open")}
               data-tip-side="bottom"
             >
               <span className="truncate">{project.title}</span>
@@ -771,13 +937,13 @@ export function StudioApp() {
             <button
               onClick={() => void handleSaveProject()}
               className="flex items-center gap-1.5 max-w-full text-[11px] text-[var(--label-2)] hover:text-[var(--label)] transition-colors"
-              data-tip="Save to projects  ⌘S"
+              data-tip={tip("Save to projects", "file.save")}
               data-tip-side="bottom"
               aria-label={`Save. ${status.label}`}
             >
               <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: status.dot }} />
               <span className="truncate">
-                {TOOL_LABEL[mode]} · {status.label}
+                {toolLabel(mode, transformTool)} · {status.label}
               </span>
             </button>
             {projectsMenu.open && (
@@ -835,7 +1001,7 @@ export function StudioApp() {
               className="icon-btn relative"
               aria-pressed={showAiCopilot}
               onClick={() => setShowAiCopilot((v) => !v)}
-              data-tip="Copilot  C"
+              data-tip={tip("Copilot", "panel.copilot")}
               data-tip-side="bottom"
               aria-label={`Toggle AI copilot${cueCount ? `, ${cueCount} suggestions` : ""}`}
             >
@@ -850,7 +1016,7 @@ export function StudioApp() {
               className="icon-btn"
               aria-pressed={inspectorOpen}
               onClick={() => setInspectorOpen((v) => !v)}
-              data-tip="Inspector  I"
+              data-tip={tip("Inspector", "panel.inspector")}
               data-tip-side="bottom"
               aria-label="Toggle inspector"
             >
@@ -860,7 +1026,7 @@ export function StudioApp() {
               className="icon-btn"
               aria-pressed={showUserManual}
               onClick={() => setShowUserManual((v) => !v)}
-              data-tip="Help  ?"
+              data-tip={tip("Help & shortcuts", "panel.help")}
               data-tip-side="bottom"
               aria-label="Help"
             >
@@ -870,7 +1036,7 @@ export function StudioApp() {
               onClick={() => void handleRunExport()}
               disabled={isExporting}
               className="btn-primary h-8 px-4 ml-1 text-[13px]"
-              data-tip="Export bundle  ⌘E"
+              data-tip={tip("Export bundle", "file.export")}
               data-tip-side="bottom"
             >
               {isExporting ? "Exporting…" : "Export"}
@@ -890,15 +1056,15 @@ export function StudioApp() {
                 {gi > 0 && <span className="w-6 h-px bg-[var(--separator-strong)] my-1" />}
                 {group.map((tool) => (
                   <button
-                    key={tool.id}
-                    onClick={() => handleSelectTool(tool.id)}
+                    key={tool.transform ?? tool.id}
+                    onClick={() => handleSelectTool(tool)}
                     className="icon-btn h-9 w-9"
-                    aria-pressed={mode === tool.id}
+                    aria-pressed={mode === tool.id && (!tool.transform || tool.transform === transformTool)}
                     aria-label={tool.label}
-                    data-tip={`${tool.label}  ${tool.key}`}
+                    data-tip={tip(tool.label, tool.command)}
                     data-tip-side="right"
                   >
-                    <Icon name={tool.id} size={18} />
+                    <Icon name={tool.icon} size={18} />
                   </button>
                 ))}
               </div>
@@ -1115,10 +1281,13 @@ export function StudioApp() {
         >
           <div className="h-12 px-2 flex items-center gap-2 shrink-0">
             <button
-              onClick={() => setIsPlaying(!isPlaying)}
+              onClick={() => {
+                if (!isPlaying) store.setPlayDirection(1);
+                setIsPlaying(!isPlaying);
+              }}
               className="h-8 w-8 grid place-items-center rounded-full bg-[var(--fill)] hover:bg-[var(--fill)]/80 text-[var(--label)] transition-colors"
               aria-label={isPlaying ? "Pause" : "Play"}
-              data-tip={isPlaying ? "Pause  Space" : "Play  Space"}
+              data-tip={`${isPlaying ? "Stop" : "Play"}  ${shortcutLabel("play.forward", mac)} · Space`}
               data-tip-side="top"
             >
               <Icon name={isPlaying ? "pause" : "play"} size={14} />
@@ -1148,7 +1317,9 @@ export function StudioApp() {
                 aria-label="Playhead"
                 onChange={(e) => {
                   setIsPlaying(false);
-                  setCurrentTime(parseFloat(e.target.value));
+                  // Scrubbing snaps to frames as in Spine; hold ⇧ to scrub freely.
+                  const t = parseFloat(e.target.value);
+                  setCurrentTime(shiftDownRef.current ? t : snapTime(t, currentClipObj?.fps || 30, clipDuration));
                 }}
                 className="w-full cursor-pointer"
               />
@@ -1191,7 +1362,7 @@ export function StudioApp() {
               className="icon-btn"
               aria-pressed={dopeSheetExpanded}
               onClick={() => setDopeSheetExpanded(!dopeSheetExpanded)}
-              data-tip="Timeline  K · Curves  G"
+              data-tip={`Timeline  ${shortcutLabel("panel.timeline", mac)} · Curves  ${shortcutLabel("panel.graph", mac)}`}
               data-tip-side="top"
               aria-label="Toggle keyframe sheet"
             >
@@ -1287,6 +1458,15 @@ export function StudioApp() {
           onDiscard={() => void resolvePending(false)}
           onCancel={() => setPendingOpen(null)}
         />
+      )}
+
+      {hint && (
+        <div
+          role="status"
+          className={`fixed z-40 ${recovery ? "top-[112px]" : "top-[64px]"} left-1/2 -translate-x-1/2 material-thick rounded-full px-3.5 py-1.5 text-[12px] animate-panel-in pointer-events-none`}
+        >
+          {hint.text}
+        </div>
       )}
 
       {recovery && (

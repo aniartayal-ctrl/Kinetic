@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { SpineForgeAnimator } from "@/core/animator";
 import { getSlotStageContext } from "@/core/batch-symbols-and-slot-stage";
 import { compute25DParallaxBoneOffsets } from "@/core/parallax-and-lipsync";
-import { RIG_BONE_PALETTE } from "@/core/schema";
+import { patchKeyAt, snapTime, type Channel } from "@/core/keyframes";
+import { RIG_BONE_PALETTE, type TransformKey } from "@/core/schema";
 import {
   BONUS_WHEEL_WEDGES,
   evaluateBigWinChoreography,
@@ -29,10 +30,13 @@ export function StudioViewport() {
     playbackSpeed,
     heatmapSingleBone,
     selectBone,
-    updateBone,
+    previewBone,
     applyWeightBrush,
     applyLiquifyBrush,
-    setBoneKeyframeAtCurrentTime,
+    transformTool,
+    editActiveClip,
+    commitPreview,
+    swapToPreviousTool,
     setCurrentTime,
     setParallaxConfig,
     showSlotStage,
@@ -57,6 +61,13 @@ export function StudioViewport() {
     origX: number;
     origY: number;
     origR: number;
+    origSx: number;
+    origSy: number;
+    /** Track and frame at drag start; every move re-derives from these, so drags never accumulate drift. */
+    origTrack: TransformKey[];
+    time: number;
+    lastTool: "rotate" | "translate" | "scale" | "pivot";
+    moved: boolean;
   } | null>(null);
   const isPaintingRef = useRef(false);
   const [loadedProjectId, setLoadedProjectId] = useState<string>("");
@@ -157,7 +168,7 @@ export function StudioViewport() {
         const duration = clip?.duration ?? 2.4;
         let evalTime = store.currentTime;
         if (store.isPlaying && store.mode !== "rig" && store.mode !== "mesh") {
-          evalTime = (store.currentTime + dt) % duration;
+          evalTime = (((store.currentTime + dt * store.playDirection) % duration) + duration) % duration;
           setCurrentTime(evalTime);
         } else if (store.mode === "rig" || store.mode === "mesh") {
           evalTime = 0;
@@ -550,6 +561,46 @@ export function StudioViewport() {
     };
   }, [playbackSpeed, setCurrentTime]);
 
+  // Test hook for scripts/smoke-ui.mjs, only when the page is opened with ?test.
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("test")) return;
+    const w = window as unknown as { __kineticTest?: Record<string, unknown> };
+    w.__kineticTest = {
+      ...w.__kineticTest,
+      boneScreen: (name: string) => {
+        const overlay = overlayCanvasRef.current;
+        const renderer = rendererRef.current;
+        const animator = animatorRef.current;
+        const s = useStudioStore.getState();
+        const idx = s.project.bones.findIndex((b) => b.name === name);
+        if (!overlay || !renderer || !animator || idx < 0) return null;
+        const m = animator.evaluateAt(s.mode === "rig" || s.mode === "mesh" ? 0 : s.currentTime, 0).world[idx]!;
+        const rect = overlay.getBoundingClientRect();
+        const dpr = overlay.width / Math.max(1, rect.width);
+        const { scale, offsetX, offsetY } = renderer.getViewMetrics(overlay.width, overlay.height);
+        return { x: rect.left + (m[4] * scale + offsetX) / dpr, y: rect.top + (m[5] * scale + offsetY) / dpr };
+      },
+      state: () => {
+        const s = useStudioStore.getState();
+        const clip = s.project.animations[s.activeClip];
+        return {
+          mode: s.mode,
+          transformTool: s.transformTool,
+          currentTime: s.currentTime,
+          isPlaying: s.isPlaying,
+          playDirection: s.playDirection,
+          historyIndex: s.historyIndex,
+          fps: clip?.fps ?? 30,
+          loop: clip?.loop ?? false,
+        };
+      },
+      boneKeys: (bone: string) => {
+        const s = useStudioStore.getState();
+        return s.project.animations[s.activeClip]?.boneTracks[bone] ?? [];
+      },
+    };
+  }, []);
+
   const eventToRigCoords = (e: ReactPointerEvent<HTMLCanvasElement>): { x: number; y: number } | null => {
     const overlay = overlayCanvasRef.current;
     const renderer = rendererRef.current;
@@ -566,6 +617,7 @@ export function StudioViewport() {
   };
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0) return; // right-click swaps tools (onContextMenu); never start a drag with it
     const pt = eventToRigCoords(e);
     if (!pt) return;
     pointerRigPosRef.current = pt;
@@ -606,6 +658,10 @@ export function StudioViewport() {
       const boneObj = project.bones.find((b) => b.name === closestBone)!;
       const bIdx = project.bones.indexOf(boneObj);
       const pose = frame.poses[bIdx]!;
+      const clip = project.animations[activeClip];
+      // Keys land on whole frames, as in Spine; the playhead jumps to that frame.
+      const keyTime = clip ? snapTime(currentTime, clip.fps || 30, clip.duration) : 0;
+      if (mode === "animate" && clip && Math.abs(keyTime - currentTime) > 1e-4) setCurrentTime(keyTime);
       draggingBoneRef.current = {
         boneName: closestBone,
         startRigX: pt.x,
@@ -613,6 +669,12 @@ export function StudioViewport() {
         origX: mode === "rig" ? boneObj.x : pose.x,
         origY: mode === "rig" ? boneObj.y : pose.y,
         origR: pose.r,
+        origSx: pose.sx,
+        origSy: pose.sy,
+        origTrack: clip?.boneTracks[closestBone] ?? [],
+        time: keyTime,
+        lastTool: mode === "rig" ? "pivot" : "rotate",
+        moved: false,
       };
       e.currentTarget.setPointerCapture(e.pointerId);
     }
@@ -647,28 +709,59 @@ export function StudioViewport() {
     const dx = pt.x - drag.startRigX;
     const dy = pt.y - drag.startRigY;
 
+    if (!drag.moved && Math.hypot(dx, dy) < 2) return;
+
     if (mode === "rig") {
-      updateBone(drag.boneName, {
+      drag.moved = true;
+      previewBone(drag.boneName, {
         x: Number(Math.max(0, Math.min(1, drag.origX + dx / project.width)).toFixed(4)),
         y: Number(Math.max(0, Math.min(1, drag.origY + dy / project.height)).toFixed(4)),
       });
     } else if (mode === "animate") {
-      if (drag.boneName.startsWith("ik-") || drag.boneName === "root" || e.shiftKey) {
-        setBoneKeyframeAtCurrentTime(drag.boneName, {
-          x: Number((drag.origX + dx).toFixed(1)),
-          y: Number((drag.origY + dy).toFixed(1)),
-        });
+      // B (pose): IK targets and root move, other bones rotate, ⇧ moves. C / V / X force one transform,
+      // and ⇧ refines it as in Spine: 15° rotation steps, axis lock, uniform scale.
+      const isPose = transformTool === "pose";
+      const tool: "rotate" | "translate" | "scale" = isPose
+        ? drag.boneName.startsWith("ik-") || drag.boneName === "root" || e.shiftKey
+          ? "translate"
+          : "rotate"
+        : transformTool;
+      const refine = !isPose && e.shiftKey;
+      const patch: Partial<Record<Channel, number>> = {};
+      if (tool === "rotate") {
+        const delta = dx * 0.45;
+        patch.r = drag.origR + (refine ? Math.round(delta / 15) * 15 : delta);
+      } else if (tool === "translate") {
+        const lockY = refine && Math.abs(dx) >= Math.abs(dy);
+        const lockX = refine && !lockY;
+        patch.x = drag.origX + (lockX ? 0 : dx);
+        patch.y = drag.origY + (lockY ? 0 : dy);
       } else {
-        setBoneKeyframeAtCurrentTime(drag.boneName, {
-          r: Number((drag.origR + dx * 0.45).toFixed(2)),
-        });
+        const fx = Math.max(0.01, 1 + dx * 0.005);
+        const fy = refine ? fx : Math.max(0.01, 1 - dy * 0.005);
+        patch.sx = drag.origSx * fx;
+        patch.sy = drag.origSy * fy;
       }
+      drag.moved = true;
+      drag.lastTool = tool;
+      editActiveClip(
+        (c) => ({ ...c, boneTracks: { ...c.boneTracks, [drag.boneName]: patchKeyAt(drag.origTrack, drag.time, patch) } }),
+        null,
+      );
     }
   };
 
   const handlePointerUp = () => {
+    const drag = draggingBoneRef.current;
+    const painted = isPaintingRef.current;
     isPaintingRef.current = false;
     draggingBoneRef.current = null;
+    // One undo step per drag or brush stroke.
+    if (drag?.moved) {
+      const verb = { rotate: "Rotated", translate: "Moved", scale: "Scaled", pivot: "Moved pivot of" }[drag.lastTool];
+      commitPreview(`${verb} ${drag.boneName}`);
+    }
+    if (painted && selectedPart) commitPreview(mode === "weights" ? `Painted weights on ${selectedPart}` : `Warped ${selectedPart}`);
   };
 
   return (
@@ -689,6 +782,10 @@ export function StudioViewport() {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          swapToPreviousTool();
+        }}
         onPointerLeave={() => {
           handlePointerUp();
           setParallaxConfig({ lookX: 0, lookY: 0 });

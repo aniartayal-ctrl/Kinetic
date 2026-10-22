@@ -65,6 +65,7 @@ export function LeftToolOptionsPane({
   const {
     project,
     mode,
+    transformTool,
     selectedBone,
     selectedPart,
     activeClip,
@@ -177,7 +178,7 @@ export function LeftToolOptionsPane({
             {
               {
                 import: "Import",
-                animate: "Pose",
+                animate: { pose: "Pose", rotate: "Rotate", translate: "Translate", scale: "Scale" }[transformTool],
                 rig: "Bones & IK",
                 mesh: "Mesh",
                 weights: "Weight Paint",
@@ -373,7 +374,7 @@ export function LeftToolOptionsPane({
         )}
 
         {/* =====================================================================
-            MODE 1: MOVE / FREE TRANSFORM POSE TOOL (V) OPTIONS PANE
+            MODE 1: POSE TOOLS (B C V X) OPTIONS PANE
            ===================================================================== */}
         {mode === "animate" && (
           <>
@@ -608,7 +609,7 @@ export function LeftToolOptionsPane({
         )}
 
         {/* =====================================================================
-            MODE 2: BONE & IK PIN TOOL (P) OPTIONS PANE
+            MODE 2: BONES & IK (N) OPTIONS PANE
            ===================================================================== */}
         {mode === "rig" && (
           <>
@@ -896,14 +897,14 @@ export function LeftToolOptionsPane({
         )}
 
         {/* =====================================================================
-            MODE 4: GPU WEIGHT PAINT BRUSH (B) OPTIONS PANE
+            MODE 4: WEIGHT PAINT (⇧W) OPTIONS PANE
            ===================================================================== */}
         {mode === "weights" && (
           <>
             <div className="p-3 rounded-2xl liquid-glass-well space-y-3">
               <div className="flex items-center justify-between">
                 <span className="section-title">
-                  Weight Paint Brush (B)
+                  Weight Paint Brush (⇧W)
                 </span>
                 <button
                   onClick={() => toggleOverlay("heatmapSingleBone")}
@@ -1011,14 +1012,14 @@ export function LeftToolOptionsPane({
         )}
 
         {/* =====================================================================
-            MODE 5: LIQUIFY FFD VERTEX SCULPT TOOL (W) OPTIONS PANE
+            MODE 5: WARP (⇧L) OPTIONS PANE
            ===================================================================== */}
         {mode === "liquify" && (
           <>
             <div className="p-3 rounded-2xl liquid-glass-well space-y-3">
               <div className="flex items-center justify-between">
                 <span className="section-title">
-                  Liquify FFD Sculpt Tool (W)
+                  Warp Sculpt Tool (⇧L)
                 </span>
                 <span className="text-[10px] tabular-nums text-slate-400">
                   @{currentTime.toFixed(2)}s
@@ -1081,7 +1082,7 @@ export function LeftToolOptionsPane({
         )}
 
         {/* =====================================================================
-            MODE 6: EXPORT UNITY & SPINE 4.2 DOCK PANE (E)
+            MODE 6: EXPORT (⌘E) PANE
            ===================================================================== */}
         {mode === "export" && (
           <>

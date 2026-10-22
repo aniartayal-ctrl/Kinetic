@@ -13,7 +13,11 @@ export type ToolSpec = { name: string; args: string; does: string };
 export const COPILOT_TOOLS: ToolSpec[] = [
   // Selection, view, playback
   { name: "select", args: "{ bone?, part?, clip? }", does: "Select a bone, layer or animation clip." },
-  { name: "set_mode", args: "{ mode: import|auto|rig|mesh|weights|animate|liquify|export }", does: "Switch tool." },
+  {
+    name: "set_mode",
+    args: "{ mode: import|auto|rig|mesh|weights|animate|liquify|export, tool?: pose|rotate|translate|scale }",
+    does: "Switch tool. Spine names work: Create = rig; Rotate/Translate/Scale = animate with that tool.",
+  },
   {
     name: "toggle_overlay",
     args: "{ overlay: bones|mesh|heatmap|onion|arcs|trail|lighting|hitboxes|reels|solo, on?: boolean }",

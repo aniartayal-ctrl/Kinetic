@@ -8,6 +8,7 @@ import {
   channelValue,
   deleteKeyAt,
   moveKey,
+  rippleMoveKey,
   setKeyChannel,
   setKeyCurve,
   snapTime,
@@ -84,7 +85,7 @@ export function TimelinePanel({ view, onViewChange }: { view: TimelineView; onVi
     <div className="flex-1 min-h-0 flex flex-col border-t border-[var(--separator)]">
       <div className="h-10 px-3 flex items-center gap-3 shrink-0 text-[12px]">
         <div className="segmented w-36" role="tablist" aria-label="Timeline view">
-          <button role="tab" aria-pressed={view === "keys"} onClick={() => onViewChange("keys")} data-tip="Dope sheet  K" data-tip-side="top">
+          <button role="tab" aria-pressed={view === "keys"} onClick={() => onViewChange("keys")} data-tip="Dope sheet  T" data-tip-side="top">
             Keys
           </button>
           <button role="tab" aria-pressed={view === "curves"} onClick={() => onViewChange("curves")} data-tip="Graph editor  G" data-tip-side="top">
@@ -206,7 +207,8 @@ function DopeSheet({ clip, selected, onSelect }: { clip: AnimationClip; selected
     if (e.target !== e.currentTarget) return;
     const rect = e.currentTarget.getBoundingClientRect();
     setIsPlaying(false);
-    setCurrentTime(snapTime(((e.clientX - rect.left) / rect.width) * duration, fps, duration));
+    const t = ((e.clientX - rect.left) / rect.width) * duration;
+    setCurrentTime(e.shiftKey ? Math.max(0, Math.min(duration, t)) : snapTime(t, fps, duration));
     selectBone(bone);
     onSelect(null);
   };
@@ -236,13 +238,14 @@ function DopeSheet({ clip, selected, onSelect }: { clip: AnimationClip; selected
                 return (
                   <button
                     key={`${i}-${k.time}`}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      deleteBoneKeyframe(bone.name, k.time);
+                      onSelect(null);
+                    }}
                     onPointerDown={(e) => {
                       e.stopPropagation();
-                      if (e.altKey) {
-                        deleteBoneKeyframe(bone.name, k.time);
-                        onSelect(null);
-                        return;
-                      }
+                      if (e.button !== 0) return;
                       // Window listeners: the diamond remounts as it moves, so element capture would be lost.
                       const lane = e.currentTarget.parentElement!.getBoundingClientRect();
                       const startX = e.clientX;
@@ -253,7 +256,10 @@ function DopeSheet({ clip, selected, onSelect }: { clip: AnimationClip; selected
                         const dx = ev.clientX - startX;
                         if (!moved && Math.abs(dx) < 3) return;
                         moved = true;
-                        const r = moveKey(keys, i, snapTime(k.time + (dx / lane.width) * duration, fps, duration));
+                        // As in Spine: snaps to frames, ⇧ moves freely, ⌥ moves every later key with it.
+                        const raw = k.time + (dx / lane.width) * duration;
+                        const target = ev.shiftKey ? Math.max(0, Math.min(duration, Number(raw.toFixed(4)))) : snapTime(raw, fps, duration);
+                        const r = ev.altKey ? rippleMoveKey(keys, i, target, duration) : moveKey(keys, i, target);
                         editActiveClip((c) => ({ ...c, boneTracks: { ...c.boneTracks, [bone.name]: r.track } }), null);
                         onSelect({ bone: bone.name, index: r.index });
                       };
@@ -271,7 +277,7 @@ function DopeSheet({ clip, selected, onSelect }: { clip: AnimationClip; selected
                     }}
                     title={`${bone.name} · frame ${Math.round(k.time * fps)} · ${
                       k.curve === "stepped" ? "stepped" : Array.isArray(k.curve) ? "eased" : "linear"
-                    } · drag to retime, ⌥-click to delete`}
+                    } · drag to retime (⇧ free, ⌥ moves later keys) · double-click to delete`}
                     style={{ left: `${Math.max(0, Math.min(100, (k.time / duration) * 100))}%` }}
                     className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-2.5 w-2.5 rotate-45 rounded-[1px] cursor-ew-resize transition-transform hover:scale-125 ${
                       isSel ? "bg-white ring-2 ring-[var(--accent)]" : Array.isArray(k.curve) ? "bg-[var(--accent-hover)]" : "bg-[var(--label-2)]"
@@ -401,7 +407,7 @@ function GraphEditor({ clip, selected, onSelect }: { clip: AnimationClip; select
     }
     dragRef.current = { kind: "scrub" };
     setIsPlaying(false);
-    setCurrentTime(snapTime(tOf(px), fps, duration));
+    setCurrentTime(e.shiftKey ? clamp(tOf(px), 0, duration) : snapTime(tOf(px), fps, duration));
     onSelect(null);
   };
 
@@ -410,7 +416,7 @@ function GraphEditor({ clip, selected, onSelect }: { clip: AnimationClip; select
     if (!d) return;
     const [px, py] = point(e);
     if (d.kind === "scrub") {
-      setCurrentTime(snapTime(tOf(px), fps, duration));
+      setCurrentTime(e.shiftKey ? clamp(tOf(px), 0, duration) : snapTime(tOf(px), fps, duration));
       return;
     }
     if (d.kind === "key") {
@@ -418,13 +424,15 @@ function GraphEditor({ clip, selected, onSelect }: { clip: AnimationClip; select
       let dy = py - d.startY;
       if (!d.moved && Math.hypot(dx, dy) < 3) return;
       d.moved = true;
-      if (e.shiftKey) {
+      // ⌘/Ctrl locks to time or value. As in Spine: ⇧ skips frame snapping, ⌥ moves later keys too.
+      if (e.metaKey || e.ctrlKey) {
         if (Math.abs(dx) > Math.abs(dy)) dy = 0;
         else dx = 0;
       }
-      const newTime = snapTime(d.origTime + (dx / innerW) * duration, fps, duration);
+      const raw = d.origTime + (dx / innerW) * duration;
+      const newTime = e.shiftKey ? clamp(Number(raw.toFixed(4)), 0, duration) : snapTime(raw, fps, duration);
       const newValue = vOf(d.ch, ty(d.ch, d.origValue) + dy);
-      const moved = moveKey(d.origTrack, d.index, newTime);
+      const moved = e.altKey ? rippleMoveKey(d.origTrack, d.index, newTime, duration) : moveKey(d.origTrack, d.index, newTime);
       const nextTrack = setKeyChannel(moved.track, moved.index, d.ch, newValue);
       editActiveClip((c) => ({ ...c, boneTracks: { ...c.boneTracks, [bone]: nextTrack } }), null);
       onSelect({ bone: bone, index: moved.index });
@@ -532,6 +540,13 @@ function GraphEditor({ clip, selected, onSelect }: { clip: AnimationClip; select
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            onDoubleClick={(e) => {
+              const el = e.target as SVGElement;
+              if (el.dataset.kind !== "key") return;
+              const index = Number(el.dataset.index);
+              editActiveClip((c) => ({ ...c, boneTracks: { ...c.boneTracks, [bone]: deleteKeyAt(c.boneTracks[bone] ?? [], index) } }), `Deleted key on ${bone}`);
+              onSelect(null);
+            }}
             onPointerCancel={onPointerUp}
             role="application"
             aria-label={`Graph editor for ${bone}`}
@@ -603,7 +618,7 @@ function GraphEditor({ clip, selected, onSelect }: { clip: AnimationClip; select
                     data-ch={c.id}
                     className="cursor-grab"
                   >
-                    <title>{`${c.label} ${channelValue(k, c.id).toFixed(2)} · frame ${Math.round(k.time * fps)} · drag to edit, ⇧ to lock axis`}</title>
+                    <title>{`${c.label} ${channelValue(k, c.id).toFixed(2)} · frame ${Math.round(k.time * fps)} · drag to edit (⇧ free, ⌥ moves later keys, ⌘ locks axis) · double-click to delete`}</title>
                   </circle>
                 );
               }),

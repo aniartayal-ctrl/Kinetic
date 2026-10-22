@@ -1,5 +1,6 @@
 "use client";
 
+import { ShortcutsSheet } from "./ShortcutsSheet";
 import { useState } from "react";
 import { useStudioStore } from "@/store/useStudioStore";
 
@@ -7,13 +8,13 @@ export function CanvasCoachPill({ onOpenManual }: { onOpenManual: () => void }) 
   const { mode, selectedBone, selectedPart, brushMode, liquifyMode, brushRadius } = useStudioStore();
 
   const coachMessage: Record<string, string> = {
-    import: "Import PSD & Document Setup (O): Switch presets/skins, upload a layered .psd or flat .png, or pick any of the 8 Slot Symbols on the left.",
-    auto: "1-Click Auto Studio (A): Pick any of the 14 Game Actions or 8 Slot Symbols on the left to auto-mesh, rig, infer physics & animate.",
-    animate: `Pose Tool (V): Drag '${selectedBone}' on the canvas to rotate and auto-keyframe · Hold Shift (or drag root/IK) to move position.`,
-    rig: `Bone Pin Tool (P): Drag '${selectedBone}' pivot on the canvas to adjust its rest bind position · Mesh weights update automatically.`,
-    mesh: `Puppet Mesh (M): Choose Low / Medium / High Delaunay triangle density in the top bar for layer '${selectedPart}'.`,
-    weights: `Weight Brush (B · ${brushMode.toUpperCase()} · ${brushRadius}px): Paint on '${selectedPart}' to bind vertices to bone '${selectedBone}' · Press [ or ] to resize.`,
-    liquify: `Liquify FFD (W · ${liquifyMode.toUpperCase()} · ${brushRadius}px): Drag on '${selectedPart}' to sculpt per-vertex FFD offsets at the current frame.`,
+    import: "Import (O): Switch presets/skins, upload a layered .psd or flat .png, or pick any of the 8 Slot Symbols on the left.",
+    auto: "Auto Rig (⇧A): Pick any of the 14 Game Actions or 8 Slot Symbols on the left to auto-mesh, rig, infer physics & animate.",
+    animate: `Pose (B) · Rotate (C) · Translate (V) · Scale (X): drag '${selectedBone}' to key it at this frame. ⇧ snaps rotation to 15°, locks translate to an axis, or scales uniformly. K keys the selection.`,
+    rig: `Bones & IK (N): Drag '${selectedBone}' pivot on the canvas to adjust its rest bind position · Mesh weights update automatically.`,
+    mesh: `Mesh (M): Choose Low / Medium / High Delaunay triangle density in the top bar for layer '${selectedPart}'.`,
+    weights: `Weight Paint (⇧W · ${brushMode.toUpperCase()} · ${brushRadius}px): Paint on '${selectedPart}' to bind vertices to bone '${selectedBone}' · Press [ or ] to resize.`,
+    liquify: `Warp (⇧L · ${liquifyMode.toUpperCase()} · ${brushRadius}px): Drag on '${selectedPart}' to sculpt per-vertex offsets at the current frame.`,
     export: "Unity & Spine 4.2 Export: Inspect your packed atlas, .sfrig.json, Spine 4.2 JSON, or download the complete .ZIP / .WebM video.",
   };
 
@@ -79,7 +80,7 @@ export function UserManualModal({
           {(
             [
               { id: "quickstart", label: "1. 30-Second Quick Start (Try Live)" },
-              { id: "tools", label: "2. Tools & Shortcuts" },
+              { id: "tools", label: "2. Shortcuts" },
               { id: "slot_suite", label: "3. Slot Game Animation Suite" },
               { id: "unity", label: "4. Unity C# & Spine 4.2 Integration" },
             ] as const
@@ -139,7 +140,7 @@ export function UserManualModal({
                     </button>
                   </div>
                   <p className="text-[11px] text-slate-300">
-                    In Auto Studio (A), click any of the 14 built-in action cards (Olympus Sky-Bolt Cast, Mega Win 30× Slam, Whirlwind Cleave, Payline Symbol Pop, Treasure Chest Burst) and adjust the 12 Principles of 2D Animation sliders in real time.
+                    In Auto Rig (⇧A), click any of the 14 built-in action cards (Olympus Sky-Bolt Cast, Mega Win 30× Slam, Whirlwind Cleave, Payline Symbol Pop, Treasure Chest Burst) and adjust the 12 Principles of 2D Animation sliders in real time.
                   </p>
                 </div>
 
@@ -182,41 +183,7 @@ export function UserManualModal({
             </div>
           )}
 
-          {activeTab === "tools" && (
-            <div className="space-y-3">
-              <p className="text-slate-300">
-                Tools sit on the left rail in workflow order. Hover a tool for its name; press its key to switch.
-              </p>
-              <div className="grid grid-cols-2 gap-2.5">
-                {[
-                  { key: "O", name: "Import", desc: "Upload a layered .psd or flat .png/.webp to extract layers, joint cover rings and torso inpainting." },
-                  { key: "A", name: "Auto Rig", desc: "Visual physics learner, 12 principles dials, batch symbol rigger and the built-in game actions." },
-                  { key: "P", name: "Bones & IK", desc: "Drag bone joints in setup pose to reposition bind pivots. Skinned meshes re-weight automatically." },
-                  { key: "M", name: "Mesh", desc: "Choose contour triangle density and the auto-weight solver." },
-                  { key: "B", name: "Weight Paint", desc: "Add, subtract, smooth or replace weights on vertices with a live heatmap. [ and ] change brush size." },
-                  { key: "V", name: "Pose", desc: "Drag any bone on the canvas to rotate and keyframe it. Drag IK handles to translate." },
-                  { key: "W", name: "Warp", desc: "Push, inflate, pinch or restore mesh vertices per keyframe for squash and stretch." },
-                  { key: "E / ⌘E", name: "Export", desc: "Build the Spine 4.2, Unity and sprite-sheet bundle." },
-                  { key: "Space  ← →  , .", name: "Playback", desc: "Play or pause; arrows step one frame; comma and period jump to the previous or next key." },
-                  { key: "S  ⇧S", name: "Set Key", desc: "Key the selected bone at the playhead; with Shift, key every bone." },
-                  { key: "K  G", name: "Timeline", desc: "K opens the dope sheet (drag keys to retime, Delete removes). G opens the graph editor with bezier handles." },
-                  { key: "⌘C  ⌘V", name: "Pose Clipboard", desc: "Copy the whole pose at the playhead and paste it as keys anywhere. Breakdown keys in-betweens at any percentage." },
-                  { key: "I  C  Tab", name: "Panels", desc: "I toggles the inspector, C the copilot, Tab hides every panel." },
-                  { key: "⌘Z  ⌘S  ⌘O", name: "Undo, Save, Open", desc: "Up to 100 undo steps (⇧⌘Z redo). ⌘S saves to the projects folder with backups; ⌘O opens a saved project or template." },
-                ].map((item) => (
-                  <div key={item.key} className="p-3 rounded-2xl liquid-glass-well flex items-start gap-3">
-                    <span className="px-2 py-1 rounded-[6px] bg-[var(--fill-2)] text-[12px] font-semibold text-[var(--label)] whitespace-nowrap shrink-0">
-                      {item.key}
-                    </span>
-                    <div>
-                      <div className="font-bold text-white">{item.name}</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">{item.desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {activeTab === "tools" && <ShortcutsSheet />}
 
           {activeTab === "slot_suite" && (
             <div className="space-y-3.5">
