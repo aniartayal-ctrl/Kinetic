@@ -46,7 +46,7 @@ export function UserManualModal({
     runOneClickAutoRig,
     runAutoModeSelectAction,
     setSlotStageMode,
-    loadSymbolRig,
+    requestDocument,
     setActiveVfx,
   } = useStudioStore();
 
@@ -199,8 +199,8 @@ export function UserManualModal({
                   { label: "2-Scatter Reel Fire", action: () => setSlotStageMode("scatter_anticipation") },
                   { label: "Hold & Spin Coins", action: () => setSlotStageMode("hold_and_spin_coins") },
                   { label: "Feature Splash Banner", action: () => setSlotStageMode("feature_splash") },
-                  { label: "Rig WILD Symbol", action: () => loadSymbolRig("wild") },
-                  { label: "Rig SCATTER Symbol", action: () => loadSymbolRig("scatter") },
+                  { label: "Rig WILD Symbol", action: () => requestDocument({ kind: "symbol", id: "wild", title: "Wild symbol" }) },
+                  { label: "Rig SCATTER Symbol", action: () => requestDocument({ kind: "symbol", id: "scatter", title: "Scatter symbol" }) },
                 ].map((btn, idx) => (
                   <button
                     key={idx}

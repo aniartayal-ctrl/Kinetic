@@ -1,112 +1,261 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AiProviderId } from "@/app/api/ai-agent/route";
 import { reviewClip, type CueCard } from "@/core/coach";
 import { EXAMPLE_PROMPTS, planCommand } from "@/core/copilot/planner";
-import type { CopilotAction } from "@/core/copilot/tools";
+import { trimTranscript, type AiProviderId, type ModelStep, type Turn } from "@/core/copilot/providers";
+import { runAgentTurn, StepError, toolResults } from "@/copilot/agent-loop";
 import { copilotContext, executeCopilotActions, type ActionResult, type ExecutorHost } from "@/copilot/executor";
 import { useStudioStore } from "@/store/useStudioStore";
 
-type Message = { id: string; role: "user" | "assistant"; text: string; results?: ActionResult[]; note?: string };
+type Item = { kind: "text"; text: string } | { kind: "result"; result: ActionResult };
+type Message = { id: string; role: "user" | "assistant"; text?: string; items?: Item[]; note?: string; error?: string };
+type ProviderStatus = Partial<Record<AiProviderId, { configured: boolean; model: string; keyEnv: string }>>;
 
-const PROVIDERS: { id: AiProviderId; name: string; badge: string }[] = [
+const PROVIDERS: { id: AiProviderId; name: string }[] = [
   // "cursor" is the id of the offline planner (kept for saved-session compatibility).
-  { id: "cursor", name: "Built-in", badge: "Offline" },
-  { id: "claude", name: "Claude", badge: "Sonnet 5.5" },
-  { id: "chatgpt", name: "ChatGPT", badge: "GPT-5 mini" },
-  { id: "grok", name: "Grok", badge: "Grok 4" },
+  { id: "cursor", name: "Built-in" },
+  { id: "claude", name: "Claude" },
+  { id: "chatgpt", name: "ChatGPT" },
+  { id: "grok", name: "Grok" },
 ];
+const MODEL_SUGGESTIONS: Partial<Record<AiProviderId, string[]>> = {
+  claude: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"],
+};
+const KEY_ENV: Record<string, string> = { claude: "ANTHROPIC_API_KEY", chatgpt: "OPENAI_API_KEY", grok: "XAI_API_KEY" };
 
+/** Turns kept in memory; each request sends at most the provider limit from providers.ts. */
+const KEEP_TURNS = 80;
+const PROVIDER_PREF = "kinetic-pro:copilot-provider";
 const SEVERITY_COLOR = { warn: "#ff9f0a", tip: "#64b0ff" } as const;
+
+const prettyModel = (id?: string) => {
+  const m = id?.match(/^claude-([a-z]+)-(\d+)-(\d+)/);
+  return m ? `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} ${m[2]}.${m[3]}` : (id ?? "");
+};
+let seq = 0;
+const nextId = () => `${Date.now().toString(36)}-${(seq++).toString(36)}`;
+
+function ResultRow({ r }: { r: ActionResult }) {
+  const msg = r.message && r.message !== r.action.summary ? r.message : "";
+  const long = msg.length > 140 || msg.includes("\n");
+  const first = msg.split("\n")[0]!;
+  return (
+    <li className="flex items-start gap-1.5 text-[12px] leading-snug">
+      <span className={`mt-[1px] shrink-0 ${r.ok ? "text-[#30d158]" : "text-[#ff453a]"}`} aria-label={r.ok ? "Done" : "Failed"}>
+        {r.ok ? "✓" : "✕"}
+      </span>
+      <span className="min-w-0">
+        <span className="text-[var(--label)]">{r.action.summary}</span>
+        {msg &&
+          (long ? (
+            <details className="text-[var(--label-2)]">
+              <summary className="cursor-pointer select-none truncate">{first.length > 110 ? `${first.slice(0, 110)}…` : first}</summary>
+              <span className="block whitespace-pre-line mt-0.5">{msg}</span>
+            </details>
+          ) : (
+            <span className="block text-[var(--label-2)]">{msg}</span>
+          ))}
+      </span>
+    </li>
+  );
+}
 
 export function AiAgentPanel({
   onExport,
   onSave,
   onOpenBudget,
   onOpenProject,
+  onOpenSymbol,
   onHidePane,
 }: {
   onExport: () => Promise<void>;
   onSave: () => Promise<boolean>;
   onOpenBudget: () => void;
   onOpenProject: (name?: string) => Promise<string>;
+  onOpenSymbol: ExecutorHost["openSymbol"];
   onHidePane?: () => void;
 }) {
   const project = useStudioStore((s) => s.project);
   const activeClip = useStudioStore((s) => s.activeClip);
   const [provider, setProvider] = useState<AiProviderId>("cursor");
-  const [apiKey, setApiKey] = useState("");
+  const [status, setStatus] = useState<ProviderStatus | null>(null);
+  // One key per provider, so a Claude key is never sent to another provider after switching tabs.
+  const [keys, setKeys] = useState<Partial<Record<AiProviderId, string>>>({});
+  const apiKey = keys[provider] ?? "";
+  const setApiKey = (value: string) => setKeys((k) => ({ ...k, [provider]: value }));
+  const [model, setModel] = useState("");
+  const [lastModel, setLastModel] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(0);
   const [showAllCards, setShowAllCards] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [sent, setSent] = useState<string[]>([]);
   const [recall, setRecall] = useState(-1);
   const threadRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<Turn[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const pickedRef = useRef(false);
 
   const cards = useMemo(() => reviewClip(project, activeClip), [project, activeClip]);
   const fixable = cards.filter((c) => c.apply).length;
-  const host: ExecutorHost = { exportBundle: onExport, save: onSave, openBudget: onOpenBudget, openProject: onOpenProject };
+  const host: ExecutorHost = { exportBundle: onExport, save: onSave, openBudget: onOpenBudget, openProject: onOpenProject, openSymbol: onOpenSymbol };
+
+  // Which cloud providers have a server key. A saved choice wins; otherwise Claude when it is set up.
+  useEffect(() => {
+    let alive = true;
+    try {
+      const saved = localStorage.getItem(PROVIDER_PREF) as AiProviderId | null;
+      if (saved && PROVIDERS.some((p) => p.id === saved)) {
+        setProvider(saved);
+        pickedRef.current = true;
+      }
+    } catch {
+      /* storage unavailable */
+    }
+    fetch("/api/ai-agent")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { providers?: ProviderStatus } | null) => {
+        if (!alive || !d?.providers) return;
+        setStatus(d.providers);
+        if (!pickedRef.current && d.providers.claude?.configured) setProvider("claude");
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
 
-  const push = (m: Omit<Message, "id">) => setMessages((prev) => [...prev, { ...m, id: `${Date.now()}-${prev.length}` }]);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
-  const run = async (actions: CopilotAction[]) => executeCopilotActions(actions, host);
+  const pickProvider = (id: AiProviderId) => {
+    setProvider(id);
+    setModel("");
+    setLastModel("");
+    pickedRef.current = true;
+    try {
+      localStorage.setItem(PROVIDER_PREF, id);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
+  const record = (...turns: Turn[]) => {
+    transcriptRef.current = trimTranscript([...transcriptRef.current, ...turns], KEEP_TURNS);
+  };
+  const update = (id: string, fn: (m: Message) => Message) => setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
+  const addItems = (id: string, items: Item[]) => update(id, (m) => ({ ...m, items: [...(m.items ?? []), ...items] }));
+
+  const providerName = PROVIDERS.find((p) => p.id === provider)!.name;
+  const st = provider === "cursor" ? undefined : status?.[provider];
+  const noKey = provider !== "cursor" && !apiKey.trim() && st?.configured === false;
+
+  /** Offline planner. Its turns join the transcript, so a cloud model can pick up the thread. */
+  const runPlanner = async (text: string, replyId: string, note?: string) => {
+    const { reply, actions } = planCommand(text, copilotContext());
+    const results = await executeCopilotActions(actions, host);
+    const calls = actions.slice(0, results.length).map((a, i) => ({ id: `local_${nextId().replace(/-/g, "_")}_${i}`, tool: a.tool, args: a.args }));
+    record({ role: "user", text }, { role: "assistant", text: reply, calls }, ...(calls.length > 0 ? [{ role: "tool" as const, results: toolResults(calls, results) }] : []));
+    addItems(replyId, [...results.map((r) => ({ kind: "result" as const, result: r })), ...(reply ? [{ kind: "text" as const, text: reply }] : [])]);
+    if (note) update(replyId, (m) => ({ ...m, note }));
+  };
+
+  /** Cloud agent loop: the model calls tools, sees every result, and continues until it answers. */
+  const runAgent = async (text: string, replyId: string, signal: AbortSignal) => {
+    const run = await runAgentTurn({
+      prompt: text,
+      transcript: transcriptRef.current,
+      host,
+      signal,
+      onStep: setStep,
+      onText: (t) => addItems(replyId, [{ kind: "text", text: t }]),
+      onResults: (results) => addItems(replyId, results.map((r) => ({ kind: "result", result: r }))),
+      callStep: async (transcript, context, sig) => {
+        const res = await fetch("/api/ai-agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: sig,
+          body: JSON.stringify({ provider, model: model.trim() || undefined, apiKey: apiKey.trim() || undefined, transcript, context }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Partial<ModelStep> & { model?: string; error?: string; code?: string };
+        if (!res.ok) throw new StepError(data.error ?? `Request failed (${res.status})`, data.code);
+        if (data.model) setLastModel(data.model);
+        return { text: data.text ?? "", calls: Array.isArray(data.calls) ? data.calls : [], done: Boolean(data.done) };
+      },
+    });
+    transcriptRef.current = trimTranscript(run.transcript, KEEP_TURNS);
+    if (run.outcome === "error" && run.code === "no_key" && run.applied === 0) {
+      setStatus((s) => ({ ...s, [provider]: { ...(s?.[provider] ?? { model: "", keyEnv: KEY_ENV[provider] ?? "" }), configured: false } }));
+      await runPlanner(text, replyId, `No ${providerName} key, so the built-in planner ran this. Add one under Key, or set ${KEY_ENV[provider]} in .env.local and restart.`);
+      return;
+    }
+    const note =
+      run.outcome === "limit"
+        ? `Paused after ${run.steps} steps. Say “continue” to keep going.`
+        : run.outcome === "stopped"
+          ? "Stopped."
+          : undefined;
+    update(replyId, (m) => ({
+      ...m,
+      ...(note ? { note } : {}),
+      ...(run.outcome === "error" ? { error: `${run.error}${run.applied > 0 ? " Earlier steps were applied." : ""}` } : {}),
+    }));
+  };
 
   const send = async (raw: string) => {
     const text = raw.trim();
     if (!text || busy) return;
-    push({ role: "user", text });
+    const replyId = nextId();
+    setMessages((prev) => [...prev, { id: nextId(), role: "user", text }, { id: replyId, role: "assistant", items: [] }]);
     setSent((s) => [...s.filter((x) => x !== text), text].slice(-30));
     setRecall(-1);
     setInput("");
     setBusy(true);
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
-      const context = copilotContext();
-      let reply = "";
-      let actions: CopilotAction[] = [];
-      let note: string | undefined;
-      if (provider === "cursor") {
-        ({ reply, actions } = planCommand(text, context));
-      } else {
-        const res = await fetch("/api/ai-agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey: apiKey.trim() || undefined, prompt: text, context }),
-        });
-        const data = (await res.json()) as { reply?: string; actions?: CopilotAction[]; cloudError?: string; error?: string; model?: string };
-        if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-        reply = data.reply ?? "";
-        actions = Array.isArray(data.actions) ? data.actions : [];
-        if (data.cloudError) note = `Cloud model unavailable (${data.cloudError}); used the built-in planner.`;
-        else if (data.model) note = data.model;
-      }
-      const results = await run(actions);
-      push({ role: "assistant", text: reply, results, note });
+      if (provider === "cursor") await runPlanner(text, replyId);
+      else if (noKey)
+        await runPlanner(text, replyId, `No ${providerName} key, so the built-in planner ran this. Add one under Key, or set ${st?.keyEnv ?? KEY_ENV[provider]} in .env.local and restart.`);
+      else await runAgent(text, replyId, ctrl.signal);
     } catch (err) {
-      push({ role: "assistant", text: err instanceof Error ? err.message : "Something went wrong", note: "Error" });
+      const aborted = err instanceof DOMException && err.name === "AbortError";
+      update(replyId, (m) => (aborted ? { ...m, note: "Stopped." } : { ...m, error: err instanceof Error ? err.message : "Something went wrong" }));
     } finally {
       setBusy(false);
+      setStep(0);
+      abortRef.current = null;
     }
   };
 
-  const applyCard = async (card: CueCard) => {
-    const results = await run([{ tool: "apply_suggestion", args: { id: card.id }, summary: card.fixLabel ?? card.title }]);
-    push({ role: "assistant", text: "", results });
+  /** Coach buttons run through the same executor; a note keeps the model's history accurate. */
+  const runDirect = async (tool: string, args: Record<string, unknown>, summary: string) => {
+    const results = await executeCopilotActions([{ tool, args, summary }], host);
+    setMessages((prev) => [...prev, { id: nextId(), role: "assistant", items: results.map((r) => ({ kind: "result", result: r })) }]);
+    record({ role: "user", text: `[Studio note] I clicked “${summary}” in the suggestions. Result: ${results[0]?.message ?? ""}` });
   };
+  const applyCard = (card: CueCard) => runDirect("apply_suggestion", { id: card.id }, card.fixLabel ?? card.title);
+  const fixAll = () => runDirect("fix_all", {}, "Apply all coach fixes");
 
-  const fixAll = async () => {
-    const results = await run([{ tool: "fix_all", args: {}, summary: "Apply all coach fixes" }]);
-    push({ role: "assistant", text: "", results });
+  const newChat = () => {
+    abortRef.current?.abort();
+    transcriptRef.current = [];
+    setMessages([]);
   };
 
   const visibleCards = showAllCards ? cards : cards.slice(0, 2);
-  const activeProvider = PROVIDERS.find((p) => p.id === provider)!;
+  const badge =
+    provider === "cursor"
+      ? "Offline"
+      : noKey
+        ? "No key"
+        : `${prettyModel(model.trim() || lastModel || st?.model)}${apiKey.trim() ? " · your key" : st?.configured ? " · server key" : ""}`;
 
   return (
     <aside className="pointer-events-auto w-full liquid-glass-pill rounded-[var(--radius-panel)] flex flex-col overflow-hidden flex-1 min-h-0" aria-label="Copilot">
@@ -114,13 +263,20 @@ export function AiAgentPanel({
       <div className="px-3 pt-3 pb-2 space-y-2.5 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-semibold">Copilot</span>
-          <span className="text-[11px] text-[var(--label-3)]">{activeProvider.badge}</span>
+          <span className={`text-[11px] truncate ${noKey ? "text-[#ff9f0a]" : "text-[var(--label-3)]"}`} data-testid="copilot-badge">
+            {badge}
+          </span>
           <div className="flex-1" />
+          {messages.length > 0 && (
+            <button onClick={newChat} className="icon-btn h-7 w-auto px-2 text-[12px]" data-tip="Clear the conversation" data-tip-side="bottom">
+              New
+            </button>
+          )}
           <button
             onClick={() => setShowKey((v) => !v)}
             aria-pressed={showKey}
             className="icon-btn h-7 w-auto px-2 text-[12px]"
-            data-tip="API key for cloud models"
+            data-tip="API key and model for cloud models"
             data-tip-side="bottom"
           >
             Key
@@ -133,7 +289,7 @@ export function AiAgentPanel({
         </div>
         <div className="segmented" role="tablist" aria-label="Model">
           {PROVIDERS.map((p) => (
-            <button key={p.id} role="tab" aria-pressed={p.id === provider} onClick={() => setProvider(p.id)}>
+            <button key={p.id} role="tab" aria-pressed={p.id === provider} onClick={() => pickProvider(p.id)}>
               {p.name}
             </button>
           ))}
@@ -144,11 +300,34 @@ export function AiAgentPanel({
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={provider === "cursor" ? "Built-in planner needs no key" : `${activeProvider.name} API key (optional)`}
+              placeholder={provider === "cursor" ? "Built-in planner needs no key" : st?.configured ? `Server key in use (optional override)` : `${providerName} API key`}
               disabled={provider === "cursor"}
+              autoComplete="off"
+              aria-label={`${providerName} API key`}
               className="w-full h-7 rounded-[6px] bg-[var(--fill-3)] border border-[var(--separator)] px-2 text-[12px] placeholder:text-[var(--label-3)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
             />
-            <p className="text-[10.5px] text-[var(--label-3)]">Kept in this tab only. Blank uses the server&apos;s environment key, or the built-in planner.</p>
+            {provider !== "cursor" && (
+              <>
+                <input
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder={`Model (default ${st?.model ?? "from server"})`}
+                  list={`models-${provider}`}
+                  aria-label="Model id"
+                  className="w-full h-7 rounded-[6px] bg-[var(--fill-3)] border border-[var(--separator)] px-2 text-[12px] placeholder:text-[var(--label-3)] focus:outline-none focus:border-[var(--accent)]"
+                />
+                <datalist id={`models-${provider}`}>
+                  {(MODEL_SUGGESTIONS[provider] ?? []).map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              </>
+            )}
+            <p className="text-[10.5px] text-[var(--label-3)] leading-snug">
+              {provider === "cursor"
+                ? "Runs in the browser. No key, no network."
+                : `Kept in this tab only. Or set ${st?.keyEnv ?? KEY_ENV[provider]} in .env.local and restart the server.`}
+            </p>
           </div>
         )}
       </div>
@@ -161,7 +340,7 @@ export function AiAgentPanel({
             <span className="text-[11px] text-[var(--label-3)] tabular-nums">{cards.length}</span>
             <div className="flex-1" />
             {fixable > 1 && (
-              <button onClick={() => void fixAll()} className="text-[12px] text-[var(--accent-hover)] hover:underline">
+              <button onClick={() => void fixAll()} disabled={busy} className="text-[12px] text-[var(--accent-hover)] hover:underline disabled:opacity-50">
                 Fix all
               </button>
             )}
@@ -178,7 +357,7 @@ export function AiAgentPanel({
                     <p className="text-[11.5px] leading-snug text-[var(--label-2)] mt-0.5">{card.detail}</p>
                   </div>
                   {card.apply && (
-                    <button onClick={() => void applyCard(card)} className="shrink-0 btn-primary h-7 px-2.5 text-[11.5px]">
+                    <button onClick={() => void applyCard(card)} disabled={busy} className="shrink-0 btn-primary h-7 px-2.5 text-[11.5px]">
                       {card.fixLabel}
                     </button>
                   )}
@@ -195,12 +374,12 @@ export function AiAgentPanel({
       )}
 
       {/* Conversation */}
-      <div ref={threadRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2.5 border-t border-[var(--separator)]">
+      <div ref={threadRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2.5 border-t border-[var(--separator)]" aria-live="polite">
         {messages.length === 0 && (
           <div className="space-y-2 pt-1">
             <p className="text-[12px] text-[var(--label-2)] leading-snug">
-              Ask in plain words. I can mesh, weight, rig, add physics, key, ease, break down, retime, review and export. Chain steps with
-              “then”.
+              Ask in plain words. I can mesh, weight, rig, add physics, key, ease, break down, retime, review and export.
+              {provider === "cursor" ? " Chain steps with “then”." : " I see the result of every step and remember the conversation."}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {EXAMPLE_PROMPTS.map((p) => (
@@ -214,33 +393,35 @@ export function AiAgentPanel({
         {messages.map((m) =>
           m.role === "user" ? (
             <div key={m.id} className="flex justify-end">
-              <div className="max-w-[85%] rounded-[12px] rounded-br-[4px] bg-[var(--accent)] text-white px-2.5 py-1.5 text-[12.5px] leading-snug">{m.text}</div>
+              <div className="max-w-[85%] rounded-[12px] rounded-br-[4px] bg-[var(--accent)] text-white px-2.5 py-1.5 text-[12.5px] leading-snug whitespace-pre-line">
+                {m.text}
+              </div>
             </div>
           ) : (
-            <div key={m.id} className="space-y-1">
-              {m.results && m.results.length > 0 && (
-                <ul className="space-y-0.5">
-                  {m.results.map((r, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-[12px] leading-snug">
-                      <span className={`mt-[1px] shrink-0 ${r.ok ? "text-[#30d158]" : "text-[#ff453a]"}`} aria-label={r.ok ? "Done" : "Failed"}>
-                        {r.ok ? "✓" : "✕"}
-                      </span>
-                      <span>
-                        <span className="text-[var(--label)]">{r.action.summary}</span>
-                        {r.message && r.message !== r.action.summary && (
-                          <span className="block text-[var(--label-2)] whitespace-pre-line">{r.message}</span>
-                        )}
-                      </span>
-                    </li>
-                  ))}
+            <div key={m.id} className="space-y-1" data-testid="copilot-reply">
+              {(m.items ?? []).length > 0 && (
+                <ul className="space-y-1">
+                  {m.items!.map((it, i) =>
+                    it.kind === "result" ? (
+                      <ResultRow key={i} r={it.result} />
+                    ) : (
+                      <li key={i} className="text-[12.5px] leading-snug text-[var(--label)] whitespace-pre-line">
+                        {it.text}
+                      </li>
+                    ),
+                  )}
                 </ul>
               )}
-              {m.text && <p className="text-[12.5px] leading-snug text-[var(--label)]">{m.text}</p>}
+              {m.error && <p className="text-[12px] leading-snug text-[#ff453a]">{m.error}</p>}
               {m.note && <p className="text-[10.5px] text-[var(--label-3)]">{m.note}</p>}
             </div>
           ),
         )}
-        {busy && <p className="text-[12px] text-[var(--label-3)]">Working…</p>}
+        {busy && (
+          <p className="text-[12px] text-[var(--label-3)]" role="status">
+            {provider === "cursor" || noKey ? "Working…" : `${providerName} is working${step > 1 ? ` · step ${step}` : ""}…`}
+          </p>
+        )}
       </div>
 
       {/* Composer */}
@@ -263,8 +444,14 @@ export function AiAgentPanel({
               const i = recall < 0 ? sent.length - 1 : Math.max(0, recall - 1);
               setRecall(i);
               setInput(sent[i]!);
+            } else if (e.key === "ArrowDown" && recall >= 0) {
+              e.preventDefault();
+              const i = recall + 1;
+              setRecall(i >= sent.length ? -1 : i);
+              setInput(i >= sent.length ? "" : sent[i]!);
             } else if (e.key === "Escape") {
-              (e.target as HTMLTextAreaElement).blur();
+              if (busy) abortRef.current?.abort();
+              else (e.target as HTMLTextAreaElement).blur();
             }
           }}
           rows={1}
@@ -272,9 +459,15 @@ export function AiAgentPanel({
           aria-label="Ask Copilot"
           className="flex-1 min-h-8 max-h-28 resize-none rounded-[8px] bg-[var(--fill-3)] border border-[var(--separator)] px-2.5 py-1.5 text-[12.5px] placeholder:text-[var(--label-3)] focus:outline-none focus:border-[var(--accent)]"
         />
-        <button type="submit" disabled={busy || !input.trim()} className="btn-primary h-8 px-3 text-[12.5px]">
-          Run
-        </button>
+        {busy ? (
+          <button type="button" onClick={() => abortRef.current?.abort()} className="liquid-glass-button h-8 px-3 rounded-[8px] text-[12.5px]">
+            Stop
+          </button>
+        ) : (
+          <button type="submit" disabled={!input.trim()} className="btn-primary h-8 px-3 text-[12.5px]">
+            Run
+          </button>
+        )}
       </form>
     </aside>
   );

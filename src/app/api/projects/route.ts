@@ -1,7 +1,7 @@
 import path from "node:path";
 import { NextResponse } from "next/server";
 import type { SpineForgeProject } from "@/core/schema";
-import { errorResponse, readJson } from "@/server/http";
+import { blockCrossSite, errorResponse, readJson } from "@/server/http";
 import { listProjects, saveProjectFile } from "@/server/projects";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,8 @@ export async function GET() {
 
 /** Saves a project to projects/<id>/<id>.project.json (previous version goes to backups/). */
 export async function POST(request: Request) {
+  const blocked = blockCrossSite(request);
+  if (blocked) return blocked;
   const body = await readJson<{ project?: SpineForgeProject }>(request);
   if (body instanceof NextResponse) return body;
   if (!body.project || typeof body.project !== "object") {

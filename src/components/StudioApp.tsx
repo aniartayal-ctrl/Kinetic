@@ -366,6 +366,10 @@ export function StudioApp() {
   const [leftPaneOpen, setLeftPaneOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [showAiCopilot, setShowAiCopilot] = useState(false);
+  // In narrow windows the copilot and the left pane would overlap; opening the copilot tucks the pane away.
+  useEffect(() => {
+    if (showAiCopilot && window.innerWidth < 1100) setLeftPaneOpen(false);
+  }, [showAiCopilot]);
   const [inspectorTab, setInspectorTab] = useState<"layers" | "bones" | "history" | "budget">("layers");
   const [dopeSheetExpanded, setDopeSheetExpanded] = useState(false);
   const [timelineView, setTimelineView] = useState<TimelineView>("keys");
@@ -490,8 +494,20 @@ export function StudioApp() {
 
   /** Replaces the open document. Callers check for unsaved changes first (requestOpen). */
   const performOpen = async (target: OpenTarget): Promise<void> => {
+    if (target.kind === "imported") {
+      store.openProject(target.project, `Imported ${target.title}`);
+      markSaved(useStudioStore.getState().project);
+      // Rig, mesh, weight and animate in one step; this is the first edit, so the title shows Edited.
+      useStudioStore.getState().runOneClickAutoRig();
+      lastAutosaved.current = null;
+      setExportData(null);
+      setSaveState({ label: "Imported and auto-rigged. Not saved yet", tone: "local" });
+      return;
+    }
     if (target.kind === "preset") {
       useStudioStore.getState().loadPreset(target.id);
+    } else if (target.kind === "symbol") {
+      useStudioStore.getState().loadSymbolRig(target.id);
     } else {
       const res = await fetch(`/api/projects/${encodeURIComponent(target.id)}`, { cache: "no-store" });
       const data = (await res.json().catch(() => ({}))) as { project?: SpineForgeProject; error?: string };
@@ -502,7 +518,7 @@ export function StudioApp() {
     markSaved(opened);
     lastAutosaved.current = opened;
     setExportData(null); // the export preview belonged to the previous project
-    setSaveState({ label: target.kind === "preset" ? "Built-in template" : "Opened from projects", tone: "ok" });
+    setSaveState({ label: target.kind === "saved" ? "Opened from projects" : "Built-in template", tone: "ok" });
   };
 
   /** Opens `target`, or asks to save first when the current project has unsaved changes. */
@@ -515,6 +531,15 @@ export function StudioApp() {
     await performOpen(target);
     return "opened";
   };
+
+  // Every "open something else" button in the studio lands here, so unsaved work is never dropped silently.
+  const documentRequest = useStudioStore((s) => s.documentRequest);
+  useEffect(() => {
+    if (!documentRequest) return;
+    useStudioStore.getState().requestDocument(null);
+    requestOpen(documentRequest).catch((err) => setSaveState({ label: err instanceof Error ? err.message : "Could not open", tone: "local" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentRequest]);
 
   const resolvePending = async (save: boolean) => {
     if (!pendingOpen) return;
@@ -1075,6 +1100,11 @@ export function StudioApp() {
             <div className="flex flex-col min-h-0 animate-panel-in">
               <PanelBoundary name="Tool options" onError={() => autosave("error")}>
                 <LeftToolOptionsPane
+                  onImported={async (project) =>
+                    (await requestOpen({ kind: "imported", id: project.id, title: project.title, project })) === "confirm"
+                      ? "Save or discard your changes to open it."
+                      : "Opened and auto-rigged."
+                  }
                   onShipToUnity={handleRunExport}
                   onHidePane={() => setLeftPaneOpen(false)}
                   exportData={exportData}
@@ -1442,6 +1472,9 @@ export function StudioApp() {
                 setInspectorTab("budget");
               }}
               onOpenProject={openProjectByName}
+              onOpenSymbol={async (role, title) =>
+                (await requestOpen({ kind: "symbol", id: role, title })) === "confirm" ? `Save or discard your changes to open ${title}` : `Opened ${title}`
+              }
               onHidePane={() => setShowAiCopilot(false)}
             />
           </PanelBoundary>

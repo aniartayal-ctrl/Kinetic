@@ -10,12 +10,13 @@ import {
 } from "@/core/animator";
 import { getThemeSymbols } from "@/core/batch-symbols-and-slot-stage";
 import { VOICE_PHRASE_PRESETS } from "@/core/parallax-and-lipsync";
-import { BUILTIN_PRESETS } from "@/core/presets";
-import { RIG_BONE_PALETTE, type CurveType } from "@/core/schema";
+import { projectFromCut, type CutResult } from "@/core/import-project";
+import { RIG_BONE_PALETTE, type CurveType, type SpineForgeProject } from "@/core/schema";
 import { generateUnity2DColliders } from "@/core/vfx-colliders-profiler";
 import type { AutoWeightMode, FfdLiquifyMode, WeightBrushMode } from "@/core/weights";
 import { useStudioStore } from "@/store/useStudioStore";
 import { AutoModeDock } from "./AutoModeDock";
+import { BUILTIN_PROJECTS, heroTemplate } from "./ProjectsMenu";
 
 const BEZIER_PRESETS: { id: string; label: string; curve: CurveType; svgPath: string }[] = [
   { id: "sine", label: "Smooth Sine", curve: EASE_SINE_IN_OUT, svgPath: "M 4 28 C 18 28, 26 4, 40 4" },
@@ -48,6 +49,7 @@ function sheetFrameCount(json: string): number {
 }
 
 export function LeftToolOptionsPane({
+  onImported,
   onShipToUnity,
   onHidePane,
   exportData,
@@ -55,6 +57,8 @@ export function LeftToolOptionsPane({
   onDownloadZip,
   onExportWebM,
 }: {
+  /** Opens a freshly cut character (asking about unsaved work first); resolves to a status line. */
+  onImported?: (project: SpineForgeProject) => Promise<string>;
   onShipToUnity: () => Promise<void>;
   onHidePane?: () => void;
   exportData?: ExportBundlePreviewData | null;
@@ -84,8 +88,7 @@ export function LeftToolOptionsPane({
     lightAngleDeg,
     lightIntensity,
     parallax,
-    loadPreset,
-    loadSymbolRig,
+    requestDocument,
     setActiveSkin,
     selectBone,
     selectPart,
@@ -109,6 +112,7 @@ export function LeftToolOptionsPane({
 
   // State for Import PSD / Smart Part Knife
   const [cutterStatus, setCutterStatus] = useState<string>("");
+  const [cutterFailed, setCutterFailed] = useState(false);
   const [jointCoverRadius, setJointCoverRadius] = useState<number>(0.045);
   const [alphaThreshold, setAlphaThreshold] = useState<number>(8);
   const [inpaintTorso, setInpaintTorso] = useState<boolean>(true);
@@ -135,7 +139,8 @@ export function LeftToolOptionsPane({
   const themeSymbols = getThemeSymbols(project.id);
 
   const handleSmartCutUpload = async (file: File) => {
-    setCutterStatus("Running Vision Part Cutter + Telea Body Inpainting...");
+    setCutterFailed(false);
+    setCutterStatus("Cutting layers and filling the body behind the limbs…");
     try {
       const defaultCutConfig = {
         trimSource: alphaThreshold > 0,
@@ -157,11 +162,14 @@ export function LeftToolOptionsPane({
       form.append("config", JSON.stringify(defaultCutConfig));
 
       const res = await fetch("/api/cut-parts", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Cut failed");
-      setCutterStatus(`Extracted ${data.parts?.length ?? 0} layers (${data.width}×${data.height}) with joint rings!`);
+      const data = (await res.json().catch(() => ({}))) as Partial<CutResult> & { error?: string };
+      if (!res.ok) throw new Error(data.error || `Cut failed (${res.status})`);
+      if (!data.parts?.length || !data.projectId || !data.heroSrc) throw new Error("The cutter found no layers in this image.");
+      const found = `Cut ${data.parts.length} layers (${data.width}×${data.height}).`;
+      setCutterStatus(onImported ? `${found} ${await onImported(projectFromCut(data as CutResult, file.name))}` : found);
     } catch (err) {
-      setCutterStatus(err instanceof Error ? err.message : "Failed");
+      setCutterFailed(true);
+      setCutterStatus(err instanceof Error ? err.message : "Import failed");
     }
   };
 
@@ -231,15 +239,22 @@ export function LeftToolOptionsPane({
                 1. Active PSD Document & Skin Tier
               </span>
               <label className="block space-y-1">
-                <span className="text-[10.5px] text-slate-400">Character Preset (.psd)</span>
+                <span className="text-[10.5px] text-slate-400">Open document: {project.title}</span>
                 <select
-                  value={project.id.includes("solara") ? "sands-of-solara" : "astral-forge"}
-                  onChange={(e) => loadPreset(e.target.value)}
+                  value=""
+                  aria-label="Open a template"
+                  onChange={(e) => {
+                    const target = BUILTIN_PROJECTS.find((t) => t.id === e.target.value);
+                    if (target) requestDocument(target);
+                  }}
                   className="w-full bg-white/10 border border-white/20 rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold focus:outline-none"
                 >
-                  {Object.keys(BUILTIN_PRESETS).map((id) => (
-                    <option key={id} value={id} className="bg-slate-950 text-white">
-                      {id === "astral-forge" ? "Astral Forge (Star-Smith).psd" : "Sands of Solara (Priestess).psd"}
+                  <option value="" className="bg-slate-950 text-white">
+                    Open a template…
+                  </option>
+                  {BUILTIN_PROJECTS.map((t) => (
+                    <option key={t.id} value={t.id} className="bg-slate-950 text-white">
+                      {t.title}
                     </option>
                   ))}
                 </select>
@@ -274,11 +289,14 @@ export function LeftToolOptionsPane({
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 leading-relaxed">
-                Drop a layered <code className="text-sky-300">.psd</code> file (extracts trimmed layers & draw order) or a flat <code className="text-sky-300">.png/.webp</code> character for automatic SAM/OpenCV part cutting.
+                A layered <code className="text-sky-300">.psd</code> keeps your layers and draw order (best). A flat{" "}
+                <code className="text-sky-300">.png/.webp</code> is cut with a pose template: a front-facing hero with a weapon in the
+                right hand. Either way the character opens auto-rigged.
               </p>
               <input
                 type="file"
                 accept=".png,.webp,.psd"
+                aria-label="Import a PSD or PNG character"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) void handleSmartCutUpload(f);
@@ -286,7 +304,12 @@ export function LeftToolOptionsPane({
                 className="block w-full text-[11px] text-slate-300 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-[11px] file:font-bold file:bg-sky-400 file:text-slate-950 cursor-pointer"
               />
               {cutterStatus && (
-                <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-[11px] tabular-nums text-emerald-200">
+                <div
+                  role="status"
+                  className={`p-2.5 rounded-xl border text-[11px] leading-snug ${
+                    cutterFailed ? "bg-[#ff453a]/12 border-[#ff453a]/35 text-[#ffb4ae]" : "bg-emerald-500/15 border-emerald-400/30 text-emerald-200"
+                  }`}
+                >
                   {cutterStatus}
                 </div>
               )}
@@ -348,9 +371,7 @@ export function LeftToolOptionsPane({
                   4. Open Slot Symbol from Pack (8)
                 </span>
                 <button
-                  onClick={() =>
-                    loadPreset(project.id.includes("solara") ? "sands-of-solara" : "astral-forge")
-                  }
+                  onClick={() => requestDocument(heroTemplate(project.id))}
                   className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-200 font-semibold"
                 >
                   Hero Rig
@@ -360,7 +381,7 @@ export function LeftToolOptionsPane({
                 {themeSymbols.map((sym) => (
                   <button
                     key={sym.role}
-                    onClick={() => loadSymbolRig(sym.role)}
+                    onClick={() => requestDocument({ kind: "symbol", id: sym.role, title: sym.label })}
                     className="p-1.5 rounded-xl bg-white/5 hover:bg-white/12 border border-white/10 flex flex-col items-center gap-0.5 transition"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}

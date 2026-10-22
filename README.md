@@ -1,6 +1,6 @@
 # Kinetic Pro — Apple Metal 2D Mesh, Rigging & Slot Game Animation Suite for Unity
 
-**Kinetic Pro** is a standalone 2D skeletal, contour Delaunay mesh, weight-painting, and slot game animation studio built with **Apple Metal GPU acceleration (`Kinetic Pro.app`)**, a macOS pro-app style workspace, an **AI Rigging Copilot (offline planner, Claude, ChatGPT or Grok)**, and a **3-Way Unity & Spine 4.2 Export Engine**.
+**Kinetic Pro** is a standalone 2D skeletal, contour Delaunay mesh, weight-painting, and slot game animation studio built with **Apple Metal GPU acceleration (`Kinetic Pro.app`)**, a macOS pro-app style workspace, an **AI Copilot that runs every tool (Claude with native tool use, or an offline planner)**, and a **3-Way Unity & Spine 4.2 Export Engine**.
 
 📖 **[Read the Complete User Manual (`USER_MANUAL.md`)](./USER_MANUAL.md)**
 
@@ -65,9 +65,13 @@ npm run export:cli -- all
 
 ### Copilot: run the whole studio in plain words
 
-Open with **C**. The built-in planner works offline; Claude, ChatGPT or Grok can be used with a key. Every feature is a copilot tool: selection, tools, overlays, playback, auto-rig, bones, pivots, IK, physics, bone locks, mesh density and weight solvers, warp reset, keys, breakdowns, pose copy/paste, curves, retiming, fps, looping, clip generation, physics baking, Unity events, skins, budget, undo/redo, save, open project and export (32 tools, `src/core/copilot/tools.ts`). Chain steps with "then":
+Open with **⌘K**. Every feature is a copilot tool (42, `src/core/copilot/tools.ts`): inspect, selection, tools, overlays, playback, auto-rig (with body archetypes), bones, pivots, IK, physics, bone locks, mesh density and weight solvers, warp reset, draw order, layer visibility, keys (absolute or relative, by frame), key deletion, breakdowns, pose copy/paste, curves, retiming, fps, looping, clip generation and its principle settings, physics baking, Unity events (add and remove), coach review and fixes, skins, slot stage previews, VFX, lip-sync, symbol rigs, budget, undo/redo, save, open project and export. Hands-on only: brush strokes (weight painting, warp), the parallax and light sliders, and video recording.
 
-> mesh the body dense with heat weights, add physics to the cape, then make it snappier
+**Claude (recommended).** Claude calls the tools natively and sees each result before its next step, so it can inspect values, read the coach's suggestions, recover from a wrong name, and tell you what changed. It remembers the conversation ("now do the same on the cape", "undo that"). **Stop** (or Esc) halts between steps; **New** clears the conversation. Every change is one undo step.
+
+> tilt the head 15 degrees at frame 6, ease it, and add a wind-up before the swing
+
+**Built-in planner (offline).** No key, no network. Understands chained steps ("…, then …"), explicit values ("rotate the weapon -30 degrees at frame 12", "nudge the hips 5 px left", "squash it 20%"), and answers questions from the rig ("which bones have physics?") without changing anything.
 
 Each step reports ✓ or ✕ with the reason; invalid names or values are rejected without touching the rig.
 
@@ -85,11 +89,27 @@ Work is autosaved to the browser every 5 minutes when something changed, and imm
 
 ### Testing
 
-`npm test` runs 28 unit tests, including Spine 4.2 runtime round-trips, the copilot planner (30 plain-English commands) and every coach fix. `npm run test:ui` (with the studio running) clicks through every tool, overlay, tab, clip, shortcut and copilot command, applies coach fixes, checks autosave and restore on a fast-forwarded clock, then runs a seeded random-click pass, failing on any page or console error.
+`npm test` runs 96 unit tests: Spine 4.2 runtime round-trips, the copilot planner, every coach fix, the copilot executor, and an end-to-end Claude conversation through the real agent loop and relay against a strict mock of the Messages API that rejects malformed tool use.
+
+`npm run test:ui` (with the studio running) clicks through every tool, overlay, tab, clip, shortcut and copilot command, drives Claude through the UI against the mock (start the studio with `KINETIC_ANTHROPIC_BASE_URL=http://127.0.0.1:4599 ANTHROPIC_API_KEY=mock`), imports a character, checks the unsaved-changes guard, autosave and restore, then runs a seeded random-click pass. `ONLY=claude,import` runs a subset.
+
+`npm run eval:copilot` runs 32 plain-language requests against a real model and checks the rig state each should produce (Claude when `ANTHROPIC_API_KEY` is set; `-- --provider planner` for the offline baseline).
 
 ### AI Copilot keys and models
 
-The copilot works offline with its built-in planner. To use a cloud model, paste a key in the copilot's **API** drawer or set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `XAI_API_KEY`. Default models are `claude-sonnet-5-5`, `gpt-5-mini` and `grok-4`; override them with `KINETIC_CLAUDE_MODEL`, `KINETIC_OPENAI_MODEL` or `KINETIC_XAI_MODEL`. If a cloud call fails, the reply says why and falls back to the built-in planner.
+Copy `.env.example` to `.env.local` (git-ignored), set `ANTHROPIC_API_KEY`, and restart the studio. The copilot then picks Claude on its own and shows "server key" next to the model. You can also paste a key under **Key** (kept in that tab only) and pick a model there: `claude-sonnet-5-5` (default), `claude-opus-5-5` (strongest) or `claude-haiku-5-5` (fastest). `KINETIC_CLAUDE_MODEL` sets the default. ChatGPT and Grok work the same way with `OPENAI_API_KEY` / `XAI_API_KEY` and `KINETIC_OPENAI_MODEL` / `KINETIC_XAI_MODEL`.
+
+Keys stay on your machine and go only to the provider; each provider tab keeps its own key. The studio's write endpoints (save, import, export, copilot) refuse requests from other websites, so a page open in another tab cannot overwrite projects or spend your key. Without a key the request runs on the built-in planner and says so; other failures (bad key, rate limit, unknown model) explain the fix and leave the rig as it was.
+
+### Importing characters
+
+**Import** (O) takes a layered `.psd` (layers and draw order kept, best) or a flat `.png`/`.webp`. The character opens auto-rigged, meshed, weighted and animated; save it with ⌘S. Flat images are cut with a pose template (a front-facing hero with a weapon in the right hand), so other poses should come in as PSD layers. The cutter needs Python 3:
+
+```bash
+python3 -m venv vision/.venv && vision/.venv/bin/pip install -r vision/requirements.txt
+```
+
+The studio uses `vision/.venv` automatically (or `KINETIC_PYTHON`).
 
 ### Keyboard (Spine defaults)
 

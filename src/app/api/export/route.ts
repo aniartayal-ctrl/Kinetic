@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { blockCrossSite } from "@/server/http";
 import type { SpineForgeProject } from "@/core/schema";
 import { validateProject } from "@/core/schema";
 import { buildCompleteUnityExportBundle } from "@/exporters/node-bundle-builder";
 
 export async function POST(request: Request) {
+  const blocked = blockCrossSite(request);
+  if (blocked) return blocked;
   try {
     const body = (await request.json()) as {
       project: SpineForgeProject;

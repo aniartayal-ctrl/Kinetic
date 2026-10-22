@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { BUILTIN_PRESETS } from "@/core/presets";
+import type { DocumentRequest } from "@/store/useStudioStore";
 import type { ProjectSummary } from "@/server/projects";
 
-export type OpenTarget = { kind: "saved" | "preset"; id: string; title: string };
+export type OpenTarget = DocumentRequest;
 
 const SMALL_WORDS = new Set(["of", "the", "and", "a", "an", "in", "on", "to"]);
 const humanize = (id: string) =>
@@ -14,6 +15,12 @@ const humanize = (id: string) =>
     .join(" ");
 
 export const BUILTIN_PROJECTS: OpenTarget[] = Object.keys(BUILTIN_PRESETS).map((id) => ({ kind: "preset", id, title: humanize(id) }));
+
+/** The hero template of the theme a project belongs to (symbol rigs share their hero's theme). */
+export function heroTemplate(projectId: string): OpenTarget {
+  const id = projectId.includes("solara") ? "sands-of-solara" : "astral-forge";
+  return BUILTIN_PROJECTS.find((t) => t.id === id) ?? BUILTIN_PROJECTS[0]!;
+}
 
 export async function fetchSavedProjects(): Promise<ProjectSummary[]> {
   const res = await fetch("/api/projects", { cache: "no-store" });

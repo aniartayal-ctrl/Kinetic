@@ -13,6 +13,7 @@ import {
   type ElementalVfxType,
 } from "@/core/vfx-colliders-profiler";
 import { useStudioStore } from "@/store/useStudioStore";
+import { heroTemplate } from "./ProjectsMenu";
 
 const ARCHETYPE_OPTIONS: { id: AutoArchetypeId; label: string }[] = [
   { id: "auto_detect", label: "Auto-Detect from Visuals" },
@@ -49,8 +50,7 @@ export function AutoModeDock({
     mobileProfileScale,
     slotStageMode,
     slotOrientation,
-    loadPreset,
-    loadSymbolRig,
+    requestDocument,
     runOneClickAutoRig,
     runAutoModeSelectAction,
     updatePrinciples,
@@ -300,9 +300,7 @@ export function AutoModeDock({
               Batch 8-Symbol Auto-Rigger
             </span>
             <button
-              onClick={() =>
-                loadPreset(project.id.includes("solara") ? "sands-of-solara" : "astral-forge")
-              }
+              onClick={() => requestDocument(heroTemplate(project.id))}
               className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 font-semibold"
             >
               Load Hero Rig
@@ -314,7 +312,7 @@ export function AutoModeDock({
               return (
                 <button
                   key={sym.role}
-                  onClick={() => loadSymbolRig(sym.role)}
+                  onClick={() => requestDocument({ kind: "symbol", id: sym.role, title: sym.label })}
                   title={`Auto-Rig & Animate ${sym.label}`}
                   className={`p-1.5 rounded-xl border flex flex-col items-center gap-0.5 transition ${
                     active

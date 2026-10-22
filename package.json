@@ -2,17 +2,19 @@
   "name": "kinetic",
   "version": "1.0.0",
   "private": true,
-  "description": "Kinetic Pro \u2014 Apple Metal 2D Mesh, Rigging, Weight-Painting & AI Animation Studio for Unity",
+  "description": "Kinetic Pro — Apple Metal 2D Mesh, Rigging, Weight-Painting & AI Animation Studio for Unity",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3460",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3460",
-    "test": "tsx --test src/core/*.test.ts src/core/copilot/*.test.ts src/exporters/*.test.ts src/server/*.test.ts",
+    "test": "tsx --test src/core/*.test.ts src/core/copilot/*.test.ts src/copilot/*.test.ts src/exporters/*.test.ts src/server/*.test.ts",
     "export:cli": "tsx src/cli/export.ts",
     "migrate:slotspy": "tsx src/cli/migrate-slotspy.ts",
     "verify:unity": "tsx src/cli/verify-unity.ts",
     "verify:all": "npm test && tsx src/cli/verify-unity.ts",
-    "test:ui": "node scripts/smoke-ui.mjs"
+    "test:ui": "node scripts/smoke-ui.mjs",
+    "eval:copilot": "tsx scripts/eval-copilot.ts",
+    "mock:anthropic": "node scripts/mock-anthropic.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

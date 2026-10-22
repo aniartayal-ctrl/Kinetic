@@ -44,7 +44,7 @@ export function StudioViewport() {
     slotOrientation,
     setSlotStageMode,
     setSlotOrientation,
-    loadSymbolRig,
+    requestDocument,
   } = useStudioStore();
 
   const glCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -598,6 +598,10 @@ export function StudioViewport() {
         const s = useStudioStore.getState();
         return s.project.animations[s.activeClip]?.boneTracks[bone] ?? [];
       },
+      project: () => {
+        const p = useStudioStore.getState().project;
+        return { id: p.id, title: p.title, bones: p.bones.length, parts: p.parts.length, clips: Object.keys(p.animations).length };
+      },
     };
   }, []);
 
@@ -976,7 +980,7 @@ export function StudioViewport() {
                             return (
                               <button
                                 key={`${cIdx}-${rIdx}`}
-                                onClick={() => loadSymbolRig(sym.role)}
+                                onClick={() => requestDocument({ kind: "symbol", id: sym.role, title: sym.label })}
                                 title={`Click to rig & animate ${sym.label}`}
                                 style={{
                                   transform: `translateY(${cellState.offsetY * 22}px) scale(${cellState.scaleX}, ${cellState.scaleY})`,

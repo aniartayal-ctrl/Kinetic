@@ -19,6 +19,7 @@ import {
   generateProceduralClips,
 } from "./animator";
 import { autoRigProject } from "./auto-rigger";
+import { snapClipToFrames } from "./keyframes";
 import type {
   AnimationClip,
   RigBone,
@@ -854,7 +855,7 @@ export function synthesizeAllFamousGameClips(
 
   const processed: Record<string, AnimationClip> = {};
   for (const [k, clip] of Object.entries(rawAll)) {
-    processed[k] = apply12PrinciplesToClip(clip, project.bones, principles);
+    processed[k] = snapClipToFrames(apply12PrinciplesToClip(clip, project.bones, principles));
   }
   return processed;
 }

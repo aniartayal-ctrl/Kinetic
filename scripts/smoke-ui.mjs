@@ -1,24 +1,39 @@
 #!/usr/bin/env node
 /**
  * Whole-studio smoke test. Start the app first (`npm run build && npm start`), then:
- *   npm run test:ui            (KINETIC_URL overrides http://127.0.0.1:3460, SHOTS=dir saves screenshots)
+ *   npm run test:ui            (KINETIC_URL overrides http://127.0.0.1:3460, SHOTS=dir saves screenshots,
+ *                               ONLY=claude,projects runs a subset)
  *
  * Exercises every tool, overlay, inspector tab, budget target, clip, timeline view, shortcut,
  * copilot command and coach fix, then runs a seeded random "monkey" pass and an autosave/restore
  * cycle on a fast-forwarded clock. Fails on any page error, console error or dead UI.
  */
 import { chromium } from "playwright";
+import { SCRIPTS, startMockAnthropic } from "./mock-anthropic.mjs";
 
 const URL = process.env.KINETIC_URL ?? "http://127.0.0.1:3460";
 const SHOTS = process.env.SHOTS;
-const report = { steps: 0, copilot: { ok: 0, failed: [] }, coachFixes: 0, monkeyClicks: 0, errors: [] };
+const MOCK = process.env.MOCK_ANTHROPIC_PORT ?? "4599";
+const report = { steps: 0, copilot: { ok: 0, failed: [] }, claude: "not run", import: "not run", coachFixes: 0, monkeyClicks: 0, errors: [] };
+
+// The mock Messages API stays up for the whole run, so stray Claude requests (the monkey) get answers.
+const mockUrl = `http://127.0.0.1:${MOCK}`;
+const mock = (await fetch(`${mockUrl}/__report`).then((r) => r.ok).catch(() => false)) ? null : await startMockAnthropic(Number(MOCK));
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 page.on("pageerror", (e) => report.errors.push(`pageerror: ${e.message}`));
 page.on("console", (m) => m.type() === "error" && report.errors.push(`console: ${m.text()}`));
+// Name the failing request, since the console only says "Failed to load resource".
+page.on("response", async (r) => {
+  if (r.status() < 400 || !r.url().includes("/api/")) return;
+  const body = await r.text().catch(() => "");
+  report.errors.push(`http ${r.status()} ${r.request().method()} ${new globalThis.URL(r.url()).pathname}: ${body.slice(0, 160)}`);
+});
 
+const ONLY = process.env.ONLY?.split(",");
 const step = async (name, fn) => {
+  if (ONLY && !ONLY.includes(name)) return;
   report.steps++;
   const t0 = Date.now();
   try {
@@ -178,6 +193,7 @@ await step("spine keys", async () => {
 
 await step("copilot", async () => {
   await click(page.getByRole("button", { name: /Toggle AI copilot/ }));
+  await click(page.getByRole("tab", { name: "Built-in" }));
   const commands = [
     "review this clip",
     "mesh the body dense with heat weights",
@@ -209,6 +225,58 @@ await step("copilot", async () => {
   report.copilot.ok = marks.filter((m) => m.ok).length;
   report.copilot.failed = marks.filter((m) => !m.ok).map((m) => m.text.replace(/\s+/g, " ").trim());
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/copilot.png` });
+});
+
+/**
+ * Claude through the real UI, agent loop and /api/ai-agent relay, against the strict mock Messages API.
+ * Needs the app started with KINETIC_ANTHROPIC_BASE_URL=http://127.0.0.1:4599 ANTHROPIC_API_KEY=mock;
+ * the mock itself starts with this script when nothing is listening on that port.
+ */
+await step("claude", async () => {
+  try {
+    const { providers } = await (await page.request.get(`${URL}/api/ai-agent`)).json();
+    if (!providers?.claude?.configured) {
+      report.claude = `skipped: start the app with KINETIC_ANTHROPIC_BASE_URL=${mockUrl} ANTHROPIC_API_KEY=mock`;
+      return;
+    }
+    await fetch(`${mockUrl}/__reset`, { method: "POST" });
+    const box = page.getByRole("textbox", { name: "Ask Copilot" });
+    if (!(await box.count())) await click(page.getByRole("button", { name: /Toggle AI copilot/ }));
+    await click(page.getByRole("tab", { name: "Claude" }));
+    const fresh = page.getByRole("button", { name: "New" });
+    if (await fresh.count()) await click(fresh);
+    const badge = await page.getByTestId("copilot-badge").innerText();
+    if (!/server key/.test(badge)) throw new Error(`badge reads "${badge}"`);
+    for (const prompt of Object.keys(SCRIPTS)) {
+      await box.fill(prompt);
+      await box.press("Enter");
+      await page.locator('aside[aria-label="Copilot"]').getByRole("button", { name: "Run", exact: true }).waitFor({ timeout: 20000 });
+      if (prompt === "mock: finish") await page.keyboard.press("Escape"); // the project list it opened
+      if (prompt === "mock: symbol") {
+        // Unsaved work: the switch asks first, and Cancel keeps the hero.
+        await page.getByRole("alertdialog").waitFor({ timeout: 4000 });
+        await click(page.getByRole("button", { name: "Cancel" }));
+      }
+    }
+    const r = await (await fetch(`${mockUrl}/__report`)).json();
+    const called = new Set(r.calls.map((c) => c.tool));
+    const failed = r.results.filter((x) => !x.ok).map((x) => `${x.tool}: ${x.content}`);
+    const replies = await page.getByTestId("copilot-reply").allInnerTexts();
+    const problems = [
+      ...r.errors.map((e) => `protocol: ${e}`),
+      ...(r.systemOk ? [] : ["system prompt missing cache_control or studio state"]),
+      ...(r.results.length === r.calls.length ? [] : [`${r.calls.length} calls but ${r.results.length} results`]),
+      ...(failed.length === 1 && /tentacle/.test(failed[0]) ? [] : [`unexpected failures: ${failed.join(" | ")}`]),
+      ...(r.memory.includes("mock: symbol") ? [] : ["conversation memory lost the previous prompt"]),
+      ...(replies.some((t) => /Saved\. The rig fits/.test(t)) ? [] : ["final replies not shown"]),
+    ];
+    report.claude = { requests: r.requests, tools: called.size, calls: r.calls.length, problems };
+    if (problems.length > 0) throw new Error(problems.join("; "));
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/claude.png` });
+  } finally {
+    // Later steps drive the copilot offline; leave it on the built-in planner.
+    await click(page.getByRole("tab", { name: "Built-in" })).catch(() => {});
+  }
 });
 
 await step("coach", async () => {
@@ -266,12 +334,26 @@ await step("projects", async () => {
   await page.keyboard.press("Control+Shift+L");
   const box = page.getByRole("textbox", { name: "Ask Copilot" });
   if (!(await box.count())) await click(page.getByRole("button", { name: /Toggle AI copilot/ }));
+  await click(page.getByRole("tab", { name: "Built-in" }));
   await box.fill("open project sands");
   await box.press("Enter");
   await page.getByRole("alertdialog").waitFor({ timeout: 4000 });
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/unsaved-dialog.png` });
   await click(page.getByRole("button", { name: "Cancel" }));
   if (!/Astral/.test((await titleButton().getAttribute("aria-label")) ?? "")) throw new Error("Cancel still switched projects");
+
+  // Template and symbol buttons elsewhere in the studio ask too (they used to replace the document silently).
+  await page.locator("body").click({ position: { x: 800, y: 300 } });
+  await page.keyboard.press("Control+Shift+L");
+  await page.keyboard.press("o");
+  await click(page.getByRole("button", { name: /^WILD · /i }).first());
+  await page.getByRole("alertdialog").waitFor({ timeout: 4000 });
+  await click(page.getByRole("button", { name: "Cancel" }));
+  if (!/Astral/.test((await titleButton().getAttribute("aria-label")) ?? "")) throw new Error("Cancel on a symbol switch still replaced the document");
+  await page.getByLabel("Open a template").selectOption("sands-of-solara");
+  await page.getByRole("alertdialog").waitFor({ timeout: 4000 });
+  await click(page.getByRole("button", { name: "Cancel" }));
+  if (!/Astral/.test((await titleButton().getAttribute("aria-label")) ?? "")) throw new Error("Cancel on a template switch still replaced the document");
 
   // Malformed requests are rejected cleanly.
   const bad = await page.request.get(`${URL}/api/projects/..%2F..%2Fpackage`);
@@ -280,6 +362,31 @@ await step("projects", async () => {
   if (missing.status() !== 404) throw new Error(`missing project returned ${missing.status()}`);
   const notJson = await page.request.post(`${URL}/api/projects`, { data: "nope", headers: { "content-type": "text/plain" } });
   if (notJson.status() !== 400) throw new Error(`non-JSON save returned ${notJson.status()}`);
+});
+
+/** Import a flat character: cut by the Python worker, opened, auto-rigged (needs vision/requirements.txt). */
+await step("import", async () => {
+  const T = (fn, ...args) => page.evaluate(([f, a]) => window.__kineticTest[f](...a), [fn, args]);
+  const health = await page.request.get(`${URL}/api/cut-parts`);
+  if (!health.ok()) throw new Error(`cut-parts health ${health.status()}`);
+  await page.locator("body").click({ position: { x: 800, y: 300 } });
+  await page.keyboard.press("o");
+  const input = page.getByLabel("Import a PSD or PNG character");
+  await input.setInputFiles(new globalThis.URL("../public/presets/astral-forge/hero.webp", import.meta.url).pathname);
+  const dialog = page.getByRole("alertdialog");
+  const status = page.locator('[role="status"]').filter({ hasText: /Cut \d+ layers|Python|failed|no layers/i });
+  await Promise.race([dialog.waitFor({ timeout: 90000 }), status.waitFor({ timeout: 90000 })]);
+  if (await dialog.isVisible()) await click(page.getByRole("button", { name: /Don.t Save/ }));
+  await page.waitForTimeout(1500);
+  const text = (await status.first().innerText().catch(() => "")) || "";
+  if (/needs the Python package|Python 3 was not found/.test(text)) {
+    report.import = `skipped: ${text}`;
+    return;
+  }
+  const p = await T("project");
+  report.import = p;
+  if (!/^hero/.test(p.id) || p.bones < 5 || p.parts < 3 || p.clips < 10) throw new Error(`imported project looks wrong: ${JSON.stringify(p)} · ${text}`);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/import.png` });
 });
 
 await step("autosave", async () => {
@@ -324,5 +431,6 @@ await step("monkey", async () => {
 });
 
 await browser.close();
+mock?.server.close();
 console.log(JSON.stringify(report, null, 2));
 process.exit(report.errors.length > 0 ? 1 : 0);

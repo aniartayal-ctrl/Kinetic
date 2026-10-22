@@ -15,3 +15,7 @@ unity-verify/Obj/
 
 # Your saved projects and imports (see README > Projects). Remove this line to version them with git.
 /projects/
+
+# Local secrets (API keys)
+.env
+.env*.local

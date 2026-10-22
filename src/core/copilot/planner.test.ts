@@ -124,3 +124,79 @@ test("coach catches a linear, unanticipated, rigid clip and fixes it", () => {
   const ids = reviewClip(p, "test").map((c) => c.id);
   for (const id of ["slow-in-out", "anticipation", "follow-through", "loop-seam"]) assert.ok(ids.includes(id), `missing ${id} in ${ids}`);
 });
+
+test("explicit numbers key the named bones", () => {
+  const plan = (p: string) => planCommand(p, ctx).actions;
+  assert.deepEqual(plan("Tilt the head 15 degrees at frame 6")[0]!.args, { bones: ["head"], r: 15, frame: 6 });
+  assert.deepEqual(plan("rotate the head 10 degrees further")[0]!.args, { bones: ["head"], r: 10, relative: true });
+  assert.deepEqual(plan("nudge the hips 5 px left")[0]!.args, { bones: ["hips"], x: -5, relative: true });
+  assert.deepEqual(plan("squash the chest at frame 10: scale y to 0.85 and scale x to 1.15")[0]!.args, { bones: ["chest"], sx: 1.15, sy: 0.85, frame: 10 });
+  assert.deepEqual(plan("squash it 20%")[0]!.args, { bones: ["arm"], sx: 1.25, sy: 0.8, relative: true });
+  assert.deepEqual(plan("tilt the head 10° counter-clockwise")[0]!.args, { bones: ["head"], r: -10 });
+  const chained = plan("turn the head 20 degrees and move it up 10px at frame 3");
+  assert.deepEqual(chained[1]!.args, { bones: ["head"], y: -10, relative: true, frame: 3 }, "'it' is the bone named before");
+});
+
+test("questions are answered without changing anything", () => {
+  const mutating = new Set(COPILOT_TOOLS.map((t) => t.name).filter((n) => !["inspect", "review", "check_budget"].includes(n)));
+  for (const q of ["Which bones have physics?", "what's the frame rate?", "how long is this clip?", "is the loop seamless?", "What bones are there?", "Will this fit the mobile symbol budget?"]) {
+    const p = planCommand(q, { ...ctx, springBones: ["cape"] });
+    assert.ok(!p.actions.some((a) => mutating.has(a.tool)), `${q} → ${p.actions.map((a) => a.tool)}`);
+    assert.ok(p.reply.length > 0 || p.actions.length > 0, q);
+  }
+  assert.match(planCommand("Which bones have physics?", { ...ctx, springBones: ["cape"] }).reply, /cape/);
+  assert.deepEqual(planCommand("can you add physics to the cape", ctx).actions[0]!.tool, "configure_spring_physics");
+});
+
+test("common phrasings for timing, IK, skins and the clipboard", () => {
+  const args = (p: string) => planCommand(p, { ...ctx, skins: ["default", "awakened"] }).actions.map((a) => [a.tool, a.args]);
+  assert.deepEqual(args("Set the arm IK to 70 percent")[0]![1], { ikName: ctx.ikNames[0], mix: 0.7 });
+  assert.deepEqual(args("Make this clip play once instead of looping"), [["retime_clip", { loop: false }]]);
+  assert.deepEqual(args("make the clip 10% slower")[0], ["retime_clip", { scale: 1.1, stretch: true }]);
+  assert.deepEqual(args("Play the animation backward at half speed")[0], ["playback", { action: "play_backward", speed: 0.5 }]);
+  assert.deepEqual(args("Switch to the awakened skin")[0], ["set_skin_variant", { skinName: "awakened" }]);
+  assert.deepEqual(args("Copy the pose at frame 12 and paste it at frame 30"), [
+    ["go_to", { frame: 12 }],
+    ["copy_pose", {}],
+    ["paste_pose", { frame: 30 }],
+  ]);
+  assert.deepEqual(args("Fix the follow-through problem the coach found")[0], ["apply_suggestion", { id: "follow-through" }]);
+  assert.deepEqual(args("Apply every coach fix you can")[0], ["fix_all", {}]);
+  assert.deepEqual(args("go to the last key")[0], ["go_to", { key: "last" }]);
+  assert.deepEqual(args("make the cape floppier")[0], ["configure_spring_physics", { bone: "cape", enabled: true, stiffness: 40 }]);
+});
+
+test("layers, cleanup, presentation and generator phrasings", () => {
+  const args = (p: string) => planCommand(p, ctx).actions.map((a) => [a.tool, a.args]);
+  const order = ctx.parts;
+  const back = order[0]!;
+  const front = order[order.length - 1]!;
+  assert.deepEqual(args(`bring the ${back} to the front`)[0], ["set_draw_order", { part: back, move: "front" }]);
+  assert.deepEqual(args(`put the ${front} behind the ${back}`)[0], ["set_draw_order", { part: front, move: "backward", steps: order.length - 1 }]);
+  assert.deepEqual(args(`hide the ${front} layer`)[0], ["set_layer_visibility", { part: front, visible: false }]);
+  assert.deepEqual(args("hide the bones")[0], ["toggle_overlay", { overlay: "bones", on: false }]);
+  assert.deepEqual(args("delete the key at frame 12 on the head")[0], ["delete_key", { bones: ["head"], frame: 12 }]);
+  assert.deepEqual(args("remove the camera shake event")[0], ["remove_animation_event", { name: "CameraShake" }]);
+  assert.deepEqual(args("preview the big win ladder in portrait")[0], ["slot_stage", { mode: "big_win_ladder", orientation: "portrait_9_16" }]);
+  assert.deepEqual(args("turn the vfx to fire")[0], ["set_vfx", { vfx: "fire_aura" }]);
+  assert.deepEqual(args("lip sync the jackpot call")[0], ["lip_sync", { phrase: "jackpot_call" }]);
+  assert.deepEqual(args("open the wild symbol")[0], ["open_symbol_rig", { role: "wild" }]);
+  assert.deepEqual(args("more anticipation in all clips")[0], ["set_principles", { anticipation: 1.4 }]);
+  assert.deepEqual(args("auto rig as a heavy titan")[0], ["auto_rig", { archetype: "heavy_titan" }]);
+  assert.deepEqual(args("add a vfx event at frame 10")[0], ["add_animation_event", { name: "SpawnVFX", frame: 10 }]);
+});
+
+test("every catalog tool is reachable from plain English", () => {
+  const phrases = [
+    "what is wrong with this clip?", "which bones are there?", "inspect the head", "select the head", "use the rotate tool", "show onion skin", "play", "go to frame 3",
+    "auto rig", "add a bone called tip under head", "move the head pivot to 0.5, 0.2", "set ik to 40%", "add physics to the cape", "lock the chest",
+    "mesh the body dense", "reset the warp on the body", "bring the head to the front", "hide the hammer layer", "rotate the head 10 degrees",
+    "breakdown 50%", "delete the key at frame 4 on the head", "copy the pose", "paste the pose at frame 9", "ease all keys", "make it 20% faster",
+    "regenerate all clips", "bake", "add an onhit event at frame 4", "remove the onhit event", "more anticipation in all clips",
+    "preview the bonus wheel", "turn the vfx to coins", "lip sync the battle cry", "open the wild symbol", "review this clip",
+    "add anticipation", "fix everything", "switch to the awakened skin", "check the budget", "undo", "redo", "save", "open project sands", "export",
+  ];
+  const reached = new Set(phrases.flatMap((p) => planCommand(p, { ...ctx, skins: ["default", "awakened"] }).actions.map((a) => a.tool)));
+  const missing = COPILOT_TOOLS.map((t) => t.name).filter((n) => !reached.has(n));
+  assert.deepEqual(missing, []);
+});

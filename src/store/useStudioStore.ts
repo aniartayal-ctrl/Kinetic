@@ -49,6 +49,16 @@ export type TransformTool = "pose" | "rotate" | "translate" | "scale";
 
 export type StudioMode = "import" | "auto" | "rig" | "mesh" | "weights" | "liquify" | "animate" | "export";
 
+/**
+ * A request to replace the open document. UI anywhere calls `requestDocument`; the app shell runs it
+ * through one path that asks about unsaved changes first, so no button can silently discard work.
+ */
+export type DocumentRequest =
+  | { kind: "saved" | "preset"; id: string; title: string }
+  /** A character just cut by the importer; it is not saved until the user saves it. */
+  | { kind: "imported"; id: string; title: string; project: SpineForgeProject }
+  | { kind: "symbol"; id: SlotSymbolRole; title: string };
+
 export type HistorySnapshot = {
   id: string;
   label: string;
@@ -127,7 +137,10 @@ type StudioState = {
   physicsReport: VisualPhysicsReport;
 
   // Core Actions
+  /** Replaces the document without asking. UI code calls requestDocument instead. */
   loadPreset: (id: string) => void;
+  documentRequest: DocumentRequest | null;
+  requestDocument: (request: DocumentRequest | null) => void;
   setProject: (project: SpineForgeProject, historyLabel?: string) => void;
   /** Replaces the document: resets selection, clip, playhead and undo history. */
   openProject: (project: SpineForgeProject, historyLabel: string) => void;
@@ -169,6 +182,7 @@ type StudioState = {
   setMobileProfileScale: (scale: 1 | 0.5) => void;
   setSlotStageMode: (stageMode: SlotSuiteStageMode) => void;
   setSlotOrientation: (orientation: SlotOrientationMode) => void;
+  /** Replaces the document without asking. UI code calls requestDocument instead. */
   loadSymbolRig: (role: SlotSymbolRole) => void;
   updateBone: (boneName: string, patch: Partial<RigBone>) => void;
   addBone: (parentBoneName: string, name: string, x: number, y: number) => void;
@@ -337,6 +351,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       historyIndex: index,
     });
   },
+
+  documentRequest: null,
+  requestDocument: (documentRequest) => set({ documentRequest }),
 
   loadPreset: (id) => {
     const factory = BUILTIN_PRESETS[id];
@@ -614,7 +631,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           : ik,
       ),
     };
-    state.pushHistory(`IK Pin ${ikName} (${Math.round(mix * 100)}%)`, nextProject);
+    // No value in the label, so dragging the mix slider coalesces into one undo step.
+    state.pushHistory(`IK Pin ${ikName}`, nextProject);
   },
 
   regeneratePartMesh: (partName, density, weightMode) => {
@@ -667,7 +685,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const mesh = part.mesh ?? buildPartMesh(project, part);
       const vCount = mesh.positions.length / 2;
 
-      const t = Number(currentTime.toFixed(2));
+      const fps = clip.fps || 30;
+      // Warp keys land on frames, like bone keys.
+      const t = snapTime(currentTime, fps, clip.duration);
       const existingDeformTrack = [...(clip.deformTracks?.[partName] ?? [])];
       const currentOffsets = sampleDeformTrack(existingDeformTrack, t, vCount);
       const nextOffsets = paintFfdLiquifyStroke(mesh, currentOffsets, {
@@ -680,7 +700,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         mode: liquifyMode,
       });
 
-      const keyIdx = existingDeformTrack.findIndex((k) => Math.abs(k.time - t) < 0.03);
+      const keyIdx = existingDeformTrack.findIndex((k) => Math.abs(k.time - t) < 0.5 / fps);
       if (keyIdx >= 0) {
         existingDeformTrack[keyIdx] = { ...existingDeformTrack[keyIdx]!, offsets: nextOffsets };
       } else {
@@ -877,8 +897,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const { project, activeClip, currentTime } = state;
     const clip = project.animations[activeClip];
     if (!clip) return;
-    const t = Number(currentTime.toFixed(2));
-    const events = [...(clip.events ?? [])].filter((e) => !(Math.abs(e.time - t) < 0.02 && e.name === name));
+    const fps = clip.fps || 30;
+    const t = snapTime(currentTime, fps, clip.duration);
+    const events = [...(clip.events ?? [])].filter((e) => !(Math.abs(e.time - t) < 0.5 / fps && e.name === name));
     events.push({ time: t, name, stringParam, floatParam });
     events.sort((a, b) => a.time - b.time);
 
@@ -892,7 +913,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         },
       },
     };
-    state.pushHistory(`Added Event ${name} @ ${t}s`, nextProject);
+    state.pushHistory(`Added Event ${name} @ frame ${Math.round(t * fps)}`, nextProject);
   },
 
   deleteAnimationEvent: (time, name) => {

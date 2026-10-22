@@ -32,7 +32,7 @@ Kinetic Pro uses an **iOS 26 / macOS 26 Liquid Glass** spatial layout modeled di
 | **2. Tool Options Bar** | Top Center Bar | Dynamically changes to show the settings for whichever tool is active (just like Photoshop's top options bar). |
 | **3. 1-Click Auto Studio** | Left Floating Dock (in `A` mode) | Visual Physics Learner, Elemental VFX, 2.5D Parallax, Voice Lip-Sync, Slot Stage Choreographer, Batch 8-Symbol Auto-Rigger, 12 Principles Dials, and 14 Game Actions. |
 | **4. Properties & Layers** | Right-Center Floating Dock | **Top half**: Transform (`Angle °`, `ΔX`, `ΔY`), Visual Bezier Curve Graph, and 3D Normal Relight. **Bottom half**: Tabbed **Layers** (with Eye `●` visibility & `↑`/`↓` z-order), **Bones**, and **History** (`⌘Z`). |
-| **5. AI Rigging Copilot** | Extreme-Right Floating Dock | Natural-language agent switcher (**Cursor**, **Claude**, **ChatGPT**, **Grok**) that executes real tool calls on your rig, mesh, weights, and exporter. |
+| **5. AI Rigging Copilot** | Extreme-Right Floating Dock | Natural-language copilot (**Claude** with native tool use, **ChatGPT**, **Grok**, or the offline **Built-in** planner) that runs real tool calls on your rig, mesh, weights, animation and exporter, sees each result, and remembers the conversation. |
 | **6. Video Timeline & Dope Sheet** | Bottom Floating Dock | Play/Pause (`Space`), Clip selector, Time scrubber with `⚡ OnHit` / `✨ SpawnVFX` Unity event flags, `+ Event` button, `Bake Springs`, and expandable multi-bone diamond **Dope Sheet**. |
 
 ---

@@ -34,6 +34,38 @@ export function snapTime(t: number, fps: number, duration: number): number {
   return Math.min(duration, Math.max(0, Number(frame.toFixed(4))));
 }
 
+/**
+ * Snaps a clip to whole frames: the length becomes a whole number of frames and every timed key
+ * (bones, IK, warp, draw order, FX, events) lands on a frame. Keys that land on the same frame merge;
+ * the later one wins, as with upsertKey. Unity and Spine sample on frames, so this keeps timing exact.
+ */
+export function snapClipToFrames(clip: AnimationClip): AnimationClip {
+  const fps = clip.fps || 30;
+  const duration = Math.max(1 / fps, Number((Math.round(clip.duration * fps) / fps).toFixed(4)));
+  const snap = (t: number) => snapTime(t, fps, duration);
+  const merge = <T extends { time: number }>(keys: T[]): T[] => {
+    const out: T[] = [];
+    for (const k of keys.map((key) => ({ ...key, time: snap(key.time) })).sort((a, b) => a.time - b.time)) {
+      const last = out[out.length - 1];
+      if (last && Math.abs(last.time - k.time) <= SAME_TIME) out[out.length - 1] = k;
+      else out.push(k);
+    }
+    return out;
+  };
+  const tracks = <T extends { time: number }>(rec: Record<string, T[]>) => Object.fromEntries(Object.entries(rec).map(([name, keys]) => [name, merge(keys)]));
+  return {
+    ...clip,
+    duration,
+    boneTracks: tracks(clip.boneTracks),
+    ...(clip.ikTracks ? { ikTracks: tracks(clip.ikTracks) } : {}),
+    ...(clip.deformTracks ? { deformTracks: tracks(clip.deformTracks) } : {}),
+    ...(clip.drawOrderTrack ? { drawOrderTrack: merge(clip.drawOrderTrack) } : {}),
+    ...(clip.fxTrack ? { fxTrack: merge(clip.fxTrack) } : {}),
+    // Several events may share a frame.
+    ...(clip.events ? { events: clip.events.map((e) => ({ ...e, time: snap(e.time) })).sort((a, b) => a.time - b.time) } : {}),
+  };
+}
+
 /** Sampled pose as a full key (all channels filled). */
 export function poseKeyAt(track: TransformKey[] | undefined, time: number): TransformKey {
   const p = sampleTransformTrack(track, time);

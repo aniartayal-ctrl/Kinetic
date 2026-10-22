@@ -7,7 +7,7 @@
  */
 
 import { EASE_BACK_OUT, EASE_POWER2_IN, EASE_POWER2_OUT, EASE_SINE_IN_OUT, sampleTransformTrack } from "./animator";
-import { channelValue, keyPreservingShape, poseKeyAt, snapTime, upsertKey } from "./keyframes";
+import { channelValue, keyPreservingShape, poseKeyAt, snapClipToFrames, snapTime, upsertKey } from "./keyframes";
 import type { AnimationClip, SpineForgeProject, TransformKey } from "./schema";
 
 export type CueCard = {
@@ -21,9 +21,28 @@ export type CueCard = {
   apply?: (project: SpineForgeProject, clipName: string) => SpineForgeProject;
 };
 
-const LOOSE_BONE = /cape|hair|tail|cloth|plume|ribbon|chain|scarf|skirt|ear|antenna|tassel|banner|flag/i;
+const LOOSE_WORDS = new Set([
+  "cape", "cloak", "hair", "ponytail", "pigtail", "braid", "tail", "cloth", "plume", "feather", "ribbon", "chain", "scarf",
+  "skirt", "ear", "antenna", "tassel", "banner", "flag", "sash", "fringe", "mane", "whisker", "tentacle", "vine", "rope", "strap",
+]);
 const ACTION_CLIP = /strike|slam|win|power|bolt|cheer|triumph|hit|smash|attack|spin|burst|trigger|expand|open/i;
+/** Being hit is not something the character anticipates. */
+const REACTION_CLIP = /react|hurt|damage|recoil|knock|stagger|flinch/i;
 const CENTER_BONES = ["hips", "body", "pelvis", "torso", "chest"];
+/** Move size per frame (see moveScore) above which a move reads as a hit or snap. */
+const IMPACT_SPEED = 8;
+
+/**
+ * Whole-word match on the bone name ("cape-tail", "leftEar", "hair_02"), so "forearm", "spear" and
+ * "gear" are not mistaken for an ear.
+ */
+export function isLooseBone(name: string): boolean {
+  return name
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .some((t) => LOOSE_WORDS.has(t) || (t.endsWith("s") && LOOSE_WORDS.has(t.slice(0, -1))));
+}
 
 type Seg = { bone: string; index: number; k0: TransformKey; k1: TransformKey; d: Delta };
 type Delta = { r: number; x: number; y: number; sx: number; sy: number };
@@ -152,22 +171,11 @@ const fixSquash: CueCard["apply"] = (project, clipName) =>
 const fixSecondary: CueCard["apply"] = (project) => ({
   ...project,
   bones: project.bones.map((b) =>
-    LOOSE_BONE.test(b.name) && !b.spring ? { ...b, spring: { stiffness: 60, damping: 6, gain: [7, 3] as [number, number], wind: 1.2 } } : b,
+    isLooseBone(b.name) && !b.spring ? { ...b, spring: { stiffness: 60, damping: 6, gain: [7, 3] as [number, number], wind: 1.2 } } : b,
   ),
 });
 
-const fixOffFrame: CueCard["apply"] = (project, clipName) =>
-  withClip(project, clipName, (clip) => {
-    const fps = clip.fps || 30;
-    const boneTracks: Record<string, TransformKey[]> = {};
-    for (const [bone, track] of Object.entries(clip.boneTracks)) {
-      let t: TransformKey[] = [];
-      for (const k of track) t = upsertKey(t, { ...k, time: snapTime(k.time, fps, clip.duration) }).track;
-      boneTracks[bone] = t;
-    }
-    const events = clip.events?.map((e) => ({ ...e, time: snapTime(e.time, fps, clip.duration) }));
-    return { ...clip, boneTracks, ...(events ? { events } : {}) };
-  });
+const fixOffFrame: CueCard["apply"] = (project, clipName) => withClip(project, clipName, snapClipToFrames);
 
 const fixLoopSeam: CueCard["apply"] = (project, clipName) =>
   withClip(project, clipName, (clip) => {
@@ -226,7 +234,7 @@ export function reviewClip(project: SpineForgeProject, clipName: string): CueCar
     const prev = clip.boneTracks[big.bone]![big.index - 1];
     const prevD = prev ? delta(prev, big.k0) : null;
     const hasWindUp = prevD ? Math.sign(prevD[ch]) === -Math.sign(v) && Math.abs(prevD[ch]) >= Math.abs(v) * 0.08 : false;
-    if (!hasWindUp && big.k1.time - big.k0.time >= 3 / fps) {
+    if (!hasWindUp && big.k1.time - big.k0.time >= 3 / fps && !REACTION_CLIP.test(clipName)) {
       cards.push({
         id: "anticipation",
         principle: "Anticipation",
@@ -257,8 +265,11 @@ export function reviewClip(project: SpineForgeProject, clipName: string): CueCar
     }
 
     const center = centerBone(project);
-    const scaled = (clip.boneTracks[center] ?? []).some((k) => Math.abs(channelValue(k, "sx") - 1) > 0.02 || Math.abs(channelValue(k, "sy") - 1) > 0.02);
-    if (!scaled && ACTION_CLIP.test(clipName)) {
+    const scaled = CENTER_BONES.some((b) =>
+      (clip.boneTracks[b] ?? []).some((k) => Math.abs(channelValue(k, "sx") - 1) > 0.02 || Math.abs(channelValue(k, "sy") - 1) > 0.02),
+    );
+    const speed = big.score / Math.max(1, (big.k1.time - big.k0.time) * fps);
+    if (!scaled && speed >= IMPACT_SPEED) {
       cards.push({
         id: "squash",
         principle: "Squash & stretch",
@@ -281,7 +292,7 @@ export function reviewClip(project: SpineForgeProject, clipName: string): CueCar
     });
   }
 
-  const loose = project.bones.filter((b) => LOOSE_BONE.test(b.name) && !b.spring);
+  const loose = project.bones.filter((b) => isLooseBone(b.name) && !b.spring);
   if (loose.length > 0) {
     cards.push({
       id: "secondary",
@@ -329,7 +340,8 @@ export function reviewClip(project: SpineForgeProject, clipName: string): CueCar
 
   const main = big?.bone ?? Object.entries(clip.boneTracks).sort((a, b) => b[1].length - a[1].length)[0]?.[0];
   const mainTrack = main ? clip.boneTracks[main] ?? [] : [];
-  if (mainTrack.length >= 4) {
+  // Cycles (idles, breathing, walks) are evenly timed by nature.
+  if (mainTrack.length >= 4 && !clip.loop) {
     const gaps = mainTrack.slice(1).map((k, i) => k.time - mainTrack[i]!.time);
     const mean = gaps.reduce((s, g) => s + g, 0) / gaps.length;
     const sd = Math.sqrt(gaps.reduce((s, g) => s + (g - mean) ** 2, 0) / gaps.length);

@@ -142,10 +142,18 @@ def extract_psd_layers(psd_path: Path, out_dir: Path) -> dict[str, Any]:
             }
         )
 
+    # A flattened reference image: browsers cannot show the .psd itself.
+    composite_name = None
+    flat = psd.composite()
+    if flat is not None:
+        composite_name = "source-composite.png"
+        flat.convert("RGBA").save(out_dir / composite_name, "PNG")
+
     return {
         "width": canvas_w,
         "height": canvas_h,
         "parts": parts_meta,
+        "composite": composite_name,
     }
 
 
