@@ -14,7 +14,8 @@
     "verify:all": "npm test && tsx src/cli/verify-unity.ts",
     "test:ui": "node scripts/smoke-ui.mjs",
     "eval:copilot": "tsx scripts/eval-copilot.ts",
-    "mock:anthropic": "node scripts/mock-anthropic.mjs"
+    "mock:anthropic": "node scripts/mock-anthropic.mjs",
+    "brand": "node scripts/brand.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

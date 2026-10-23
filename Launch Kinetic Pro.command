@@ -9,6 +9,12 @@ echo "=== Kinetic Pro — Zero-Dependency Launcher ==="
 if [ -d "Kinetic Pro.app" ]; then
   xattr -cr "Kinetic Pro.app" 2>/dev/null || true
   chmod +x "Kinetic Pro.app/Contents/MacOS/SpineForge" "Kinetic Pro.app/Contents/MacOS/spineforge-metal-cli" 2>/dev/null || true
+  # Re-seal the ad-hoc signature when a resource (e.g. the app icon) changed after signing,
+  # then nudge Finder to pick up the new icon.
+  if ! codesign --verify --deep "Kinetic Pro.app" >/dev/null 2>&1; then
+    codesign --force --deep --sign - "Kinetic Pro.app" >/dev/null 2>&1 && echo "[OK] Re-signed Kinetic Pro.app (ad hoc)"
+    touch "Kinetic Pro.app"
+  fi
   echo "[OK] Launching Native Apple Metal 120Hz App: Kinetic Pro.app ..."
   open "Kinetic Pro.app"
 fi

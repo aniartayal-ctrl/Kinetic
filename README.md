@@ -91,11 +91,15 @@ Work is autosaved to the browser every 5 minutes when something changed, and imm
 
 ### Testing
 
-`npm test` runs 96 unit tests: Spine 4.2 runtime round-trips, the copilot planner, every coach fix, the copilot executor, and an end-to-end Claude conversation through the real agent loop and relay against a strict mock of the Messages API that rejects malformed tool use.
+`npm test` runs 97 unit tests: Spine 4.2 runtime round-trips, the copilot planner, every coach fix, the copilot executor, and an end-to-end Claude conversation through the real agent loop and relay against a strict mock of the Messages API that rejects malformed tool use.
 
 `npm run test:ui` (with the studio running) clicks through every tool, overlay, tab, clip, shortcut and copilot command, drives Claude through the UI against the mock (start the studio with `KINETIC_ANTHROPIC_BASE_URL=http://127.0.0.1:4599 ANTHROPIC_API_KEY=mock`), imports a character, checks the unsaved-changes guard, autosave and restore, then runs a seeded random-click pass. `ONLY=claude,import` runs a subset.
 
 `npm run eval:copilot` runs 32 plain-language requests against a real model and checks the rig state each should produce (Claude when `ANTHROPIC_API_KEY` is set; `-- --provider planner` for the offline baseline).
+
+### App icon
+
+The icon draws the K's stem and leg, leaves the upper arm to the eye, and puts the AI spark where it would end. `scripts/brand.mjs` holds its geometry; `npm run brand` rewrites every size from it: favicon, Apple touch icon, title bar, brand marks and the Mac app's `AppIcon.icns`. After the Mac icon changes, open the app once with `Launch Kinetic Pro.command` (it re-signs the bundle) or rebuild it with `python3 scripts/package-mac-app.py`.
 
 ### AI Copilot keys and models
 
