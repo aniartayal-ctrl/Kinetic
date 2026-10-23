@@ -1,0 +1,11 @@
+# Part cutter (PNG cutting and PSD layer import) used by /api/cut-parts.
+#   python3 -m venv vision/.venv && vision/.venv/bin/pip install -r vision/requirements.txt
+# The app uses vision/.venv automatically when it exists (or set KINETIC_PYTHON).
+numpy>=1.24
+opencv-python-headless>=4.8
+Pillow>=10.0
+psd-tools>=1.9
+# Optional HTTP worker (vision/server.py)
+# fastapi>=0.110
+# uvicorn>=0.27
+# python-multipart>=0.0.9

@@ -1,408 +1,478 @@
 "use client";
 
-import { useState } from "react";
-import type { AgentToolAction, AiProviderId } from "@/app/api/ai-agent/route";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { reviewClip, type CueCard } from "@/core/coach";
+import { EXAMPLE_PROMPTS, planCommand } from "@/core/copilot/planner";
+import { trimTranscript, type AiProviderId, type ModelStep, type Turn } from "@/core/copilot/providers";
+import { runAgentTurn, StepError, toolResults } from "@/copilot/agent-loop";
+import { copilotContext, executeCopilotActions, type ActionResult, type ExecutorHost } from "@/copilot/executor";
 import { useStudioStore } from "@/store/useStudioStore";
 
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  provider: AiProviderId;
-  text: string;
-  actions?: AgentToolAction[];
-  timestamp: string;
+type Item = { kind: "text"; text: string } | { kind: "result"; result: ActionResult };
+type Message = { id: string; role: "user" | "assistant"; text?: string; items?: Item[]; note?: string; error?: string };
+type ProviderStatus = Partial<Record<AiProviderId, { configured: boolean; model: string; keyEnv: string }>>;
+
+const PROVIDERS: { id: AiProviderId; name: string }[] = [
+  // "cursor" is the id of the offline planner (kept for saved-session compatibility).
+  { id: "cursor", name: "Built-in" },
+  { id: "claude", name: "Claude" },
+  { id: "chatgpt", name: "ChatGPT" },
+  { id: "grok", name: "Grok" },
+];
+const MODEL_SUGGESTIONS: Partial<Record<AiProviderId, string[]>> = {
+  claude: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"],
 };
+const KEY_ENV: Record<string, string> = { claude: "ANTHROPIC_API_KEY", chatgpt: "OPENAI_API_KEY", grok: "XAI_API_KEY" };
 
-const PROVIDERS: {
-  id: AiProviderId;
-  name: string;
-  modelBadge: string;
-  accent: string;
-}[] = [
-  { id: "cursor", name: "Cursor", modelBadge: "Agent MCP", accent: "#38bdf8" },
-  { id: "claude", name: "Claude", modelBadge: "Sonnet 4.5", accent: "#f97316" },
-  { id: "chatgpt", name: "ChatGPT", modelBadge: "GPT-5 / o3", accent: "#10b981" },
-  { id: "grok", name: "Grok", modelBadge: "Grok 4", accent: "#a855f7" },
-];
+/** Turns kept in memory; each request sends at most the provider limit from providers.ts. */
+const KEEP_TURNS = 80;
+const PROVIDER_PREF = "kinetic-pro:copilot-provider";
+const SEVERITY_COLOR = { warn: "#ff9f0a", tip: "#64b0ff" } as const;
 
-const QUICK_PROMPTS: { label: string; prompt: string }[] = [
-  {
-    label: "Auto-Mesh & Geodesic Weights",
-    prompt: "Generate a high-density Delaunay mesh on body and solve geodesic heat weights.",
-  },
-  {
-    label: "Tune Cape & Hair Wind Springs",
-    prompt: "Configure flowing spring physics and strong wind on the cape and hair bones.",
-  },
-  {
-    label: "Enable 2-Bone IK Arm Pin",
-    prompt: "Enable 100% 2-bone IK mix on the weapon arm with clockwise elbow bend.",
-  },
-  {
-    label: "Synthesize & Bake All 6 Clips",
-    prompt: "Regenerate all 6 procedural animations and bake springs to 24Hz keyframes.",
-  },
-  {
-    label: "Build Unity + Spine 4.2 Bundle",
-    prompt: "Export the complete Unity .sfrig.json, Spine 4.2, and flipbook sprite sheet bundle.",
-  },
-];
+const prettyModel = (id?: string) => {
+  const m = id?.match(/^claude-([a-z]+)-(\d+)-(\d+)/);
+  return m ? `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} ${m[2]}.${m[3]}` : (id ?? "");
+};
+let seq = 0;
+const nextId = () => `${Date.now().toString(36)}-${(seq++).toString(36)}`;
+
+function ResultRow({ r }: { r: ActionResult }) {
+  const msg = r.message && r.message !== r.action.summary ? r.message : "";
+  const long = msg.length > 140 || msg.includes("\n");
+  const first = msg.split("\n")[0]!;
+  return (
+    <li className="flex items-start gap-1.5 text-[12px] leading-snug">
+      <span className={`mt-[1px] shrink-0 ${r.ok ? "text-[#30d158]" : "text-[#ff453a]"}`} aria-label={r.ok ? "Done" : "Failed"}>
+        {r.ok ? "✓" : "✕"}
+      </span>
+      <span className="min-w-0">
+        <span className="text-[var(--label)]">{r.action.summary}</span>
+        {msg &&
+          (long ? (
+            <details className="text-[var(--label-2)]">
+              <summary className="cursor-pointer select-none truncate">{first.length > 110 ? `${first.slice(0, 110)}…` : first}</summary>
+              <span className="block whitespace-pre-line mt-0.5">{msg}</span>
+            </details>
+          ) : (
+            <span className="block text-[var(--label-2)]">{msg}</span>
+          ))}
+      </span>
+    </li>
+  );
+}
 
 export function AiAgentPanel({
-  onTriggerExport,
+  onExport,
+  onSave,
+  onOpenBudget,
+  onOpenProject,
+  onOpenSymbol,
   onHidePane,
-  widthClass = "w-80",
 }: {
-  onTriggerExport: () => Promise<void>;
+  onExport: () => Promise<void>;
+  onSave: () => Promise<boolean>;
+  onOpenBudget: () => void;
+  onOpenProject: (name?: string) => Promise<string>;
+  onOpenSymbol: ExecutorHost["openSymbol"];
   onHidePane?: () => void;
-  widthClass?: string;
 }) {
-  const {
-    project,
-    setMode,
-    selectBone,
-    selectPart,
-    setActiveClip,
-    regeneratePartMesh,
-    updateBone,
-    updateIkMix,
-    addBone,
-    setBoneKeyframeAtCurrentTime,
-    regenerateAllProceduralClips,
-    bakeCurrentClipSprings,
-    runOneClickAutoRig,
-    setActiveSkin,
-    addAnimationEventAtCurrentTime,
-    setLightParams,
-  } = useStudioStore();
-
+  const project = useStudioStore((s) => s.project);
+  const activeClip = useStudioStore((s) => s.activeClip);
   const [provider, setProvider] = useState<AiProviderId>("cursor");
-  const [prompt, setPrompt] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [showKeyConfig, setShowKeyConfig] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isShaded, setIsShaded] = useState(false);
+  const [status, setStatus] = useState<ProviderStatus | null>(null);
+  // One key per provider, so a Claude key is never sent to another provider after switching tabs.
+  const [keys, setKeys] = useState<Partial<Record<AiProviderId, string>>>({});
+  const apiKey = keys[provider] ?? "";
+  const setApiKey = (value: string) => setKeys((k) => ({ ...k, [provider]: value }));
+  const [model, setModel] = useState("");
+  const [lastModel, setLastModel] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(0);
+  const [showAllCards, setShowAllCards] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [sent, setSent] = useState<string[]>([]);
+  const [recall, setRecall] = useState(-1);
+  const threadRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<Turn[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const pickedRef = useRef(false);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      provider: "cursor",
-      text: "Connected to **Kinetic Pro Live Tool Engine**. Switch between **Cursor**, **Claude**, **ChatGPT**, or **Grok** above—every prompt executes real tool calls on your layers, Delaunay meshes, bone weights, IK pins, and Unity exporter.",
-      timestamp: "Ready",
-      actions: [
-        {
-          tool: "configure_mesh_and_weights",
-          args: { part: "body", density: "medium", weightMode: "hybrid" },
-          summary: "MCP Bridge linked to 12 bones & 7 mesh layers",
-        },
-      ],
-    },
-  ]);
+  const cards = useMemo(() => reviewClip(project, activeClip), [project, activeClip]);
+  const fixable = cards.filter((c) => c.apply).length;
+  const host: ExecutorHost = { exportBundle: onExport, save: onSave, openBudget: onOpenBudget, openProject: onOpenProject, openSymbol: onOpenSymbol };
 
-  const executeToolActions = async (actions: AgentToolAction[]) => {
-    for (const act of actions) {
-      switch (act.tool) {
-        case "set_mode":
-          setMode(act.args.mode);
-          break;
-        case "select_target":
-          if (act.args.bone) selectBone(act.args.bone);
-          if (act.args.part) selectPart(act.args.part);
-          if (act.args.clip) setActiveClip(act.args.clip);
-          break;
-        case "configure_mesh_and_weights":
-          selectPart(act.args.part);
-          regeneratePartMesh(act.args.part, act.args.density, act.args.weightMode);
-          break;
-        case "configure_spring_physics":
-          selectBone(act.args.bone);
-          updateBone(act.args.bone, {
-            spring: act.args.enabled
-              ? {
-                  stiffness: act.args.stiffness ?? 65,
-                  damping: act.args.damping ?? 6,
-                  gain: [7, 3],
-                  wind: act.args.wind ?? 1.8,
-                }
-              : undefined,
-          });
-          break;
-        case "configure_ik":
-          updateIkMix(act.args.ikName, act.args.mix, act.args.bendPositive);
-          break;
-        case "add_bone":
-          addBone(act.args.parent, act.args.name, act.args.x, act.args.y);
-          break;
-        case "set_keyframe_pose":
-          if (act.args.clip) setActiveClip(act.args.clip);
-          selectBone(act.args.bone);
-          setBoneKeyframeAtCurrentTime(act.args.bone, {
-            r: act.args.r,
-            x: act.args.x,
-            y: act.args.y,
-          });
-          break;
-        case "regenerate_procedural_clips":
-          regenerateAllProceduralClips();
-          break;
-        case "bake_springs_to_keys":
-          bakeCurrentClipSprings();
-          break;
-        case "trigger_unity_export":
-          await onTriggerExport();
-          break;
-        case "auto_rig_project":
-          runOneClickAutoRig();
-          break;
-        case "set_skin_variant":
-          setActiveSkin(act.args.skinName);
-          break;
-        case "add_animation_event":
-          addAnimationEventAtCurrentTime(act.args.name, act.args.stringParam, act.args.floatParam);
-          break;
-        case "configure_3d_relight":
-          setLightParams(act.args.angleDeg, act.args.intensity);
-          if (!useStudioStore.getState().enable3DRelight && act.args.enabled) {
-            useStudioStore.getState().toggleOverlay("enable3DRelight");
-          }
-          break;
-        case "toggle_onion_skin_and_arcs":
-          if (useStudioStore.getState().showOnionSkin !== act.args.onionSkin) {
-            useStudioStore.getState().toggleOverlay("showOnionSkin");
-          }
-          if (useStudioStore.getState().showMotionArcs !== act.args.motionArcs) {
-            useStudioStore.getState().toggleOverlay("showMotionArcs");
-          }
-          if (useStudioStore.getState().showSlashTrail !== act.args.slashTrail) {
-            useStudioStore.getState().toggleOverlay("showSlashTrail");
-          }
-          break;
-      }
-    }
-  };
-
-  const sendPrompt = async (inputPrompt: string) => {
-    const clean = inputPrompt.trim();
-    if (!clean || isRunning) return;
-
-    const userMsg: ChatMessage = {
-      id: `u-${Date.now()}`,
-      role: "user",
-      provider,
-      text: clean,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setPrompt("");
-    setIsRunning(true);
-
+  // Which cloud providers have a server key. A saved choice wins; otherwise Claude when it is set up.
+  useEffect(() => {
+    let alive = true;
     try {
-      const res = await fetch("/api/ai-agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider,
-          apiKey: apiKey.trim() || undefined,
-          prompt: clean,
-          project,
-        }),
-      });
-      const data = await res.json();
-      const actions: AgentToolAction[] = data.actions ?? [];
-      await executeToolActions(actions);
+      const saved = localStorage.getItem(PROVIDER_PREF) as AiProviderId | null;
+      if (saved && PROVIDERS.some((p) => p.id === saved)) {
+        setProvider(saved);
+        pickedRef.current = true;
+      }
+    } catch {
+      /* storage unavailable */
+    }
+    fetch("/api/ai-agent")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { providers?: ProviderStatus } | null) => {
+        if (!alive || !d?.providers) return;
+        setStatus(d.providers);
+        if (!pickedRef.current && d.providers.claude?.configured) setProvider("claude");
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-      const botMsg: ChatMessage = {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        provider,
-        text: data.reply || "Executed studio tool actions.",
-        actions,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      setMessages((prev) => [...prev, botMsg]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `e-${Date.now()}`,
-          role: "assistant",
-          provider,
-          text: err instanceof Error ? err.message : "Agent request failed",
-          timestamp: "Error",
-        },
-      ]);
-    } finally {
-      setIsRunning(false);
+  useEffect(() => {
+    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, busy]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const pickProvider = (id: AiProviderId) => {
+    setProvider(id);
+    setModel("");
+    setLastModel("");
+    pickedRef.current = true;
+    try {
+      localStorage.setItem(PROVIDER_PREF, id);
+    } catch {
+      /* storage unavailable */
     }
   };
 
-  const activeProviderMeta = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0]!;
+  const record = (...turns: Turn[]) => {
+    transcriptRef.current = trimTranscript([...transcriptRef.current, ...turns], KEEP_TURNS);
+  };
+  const update = (id: string, fn: (m: Message) => Message) => setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
+  const addItems = (id: string, items: Item[]) => update(id, (m) => ({ ...m, items: [...(m.items ?? []), ...items] }));
+
+  const providerName = PROVIDERS.find((p) => p.id === provider)!.name;
+  const st = provider === "cursor" ? undefined : status?.[provider];
+  const noKey = provider !== "cursor" && !apiKey.trim() && st?.configured === false;
+
+  /** Offline planner. Its turns join the transcript, so a cloud model can pick up the thread. */
+  const runPlanner = async (text: string, replyId: string, note?: string) => {
+    const { reply, actions } = planCommand(text, copilotContext());
+    const results = await executeCopilotActions(actions, host);
+    const calls = actions.slice(0, results.length).map((a, i) => ({ id: `local_${nextId().replace(/-/g, "_")}_${i}`, tool: a.tool, args: a.args }));
+    record({ role: "user", text }, { role: "assistant", text: reply, calls }, ...(calls.length > 0 ? [{ role: "tool" as const, results: toolResults(calls, results) }] : []));
+    addItems(replyId, [...results.map((r) => ({ kind: "result" as const, result: r })), ...(reply ? [{ kind: "text" as const, text: reply }] : [])]);
+    if (note) update(replyId, (m) => ({ ...m, note }));
+  };
+
+  /** Cloud agent loop: the model calls tools, sees every result, and continues until it answers. */
+  const runAgent = async (text: string, replyId: string, signal: AbortSignal) => {
+    const run = await runAgentTurn({
+      prompt: text,
+      transcript: transcriptRef.current,
+      host,
+      signal,
+      onStep: setStep,
+      onText: (t) => addItems(replyId, [{ kind: "text", text: t }]),
+      onResults: (results) => addItems(replyId, results.map((r) => ({ kind: "result", result: r }))),
+      callStep: async (transcript, context, sig) => {
+        const res = await fetch("/api/ai-agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: sig,
+          body: JSON.stringify({ provider, model: model.trim() || undefined, apiKey: apiKey.trim() || undefined, transcript, context }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Partial<ModelStep> & { model?: string; error?: string; code?: string };
+        if (!res.ok) throw new StepError(data.error ?? `Request failed (${res.status})`, data.code);
+        if (data.model) setLastModel(data.model);
+        return { text: data.text ?? "", calls: Array.isArray(data.calls) ? data.calls : [], done: Boolean(data.done), usage: data.usage };
+      },
+    });
+    transcriptRef.current = trimTranscript(run.transcript, KEEP_TURNS);
+    if (run.outcome === "error" && run.code === "no_key" && run.applied === 0) {
+      setStatus((s) => ({ ...s, [provider]: { ...(s?.[provider] ?? { model: "", keyEnv: KEY_ENV[provider] ?? "" }), configured: false } }));
+      await runPlanner(text, replyId, `No ${providerName} key, so the built-in planner ran this. Add one under Key, or set ${KEY_ENV[provider]} in .env.local and restart.`);
+      return;
+    }
+    const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+    const cost = run.usage ? `${k(run.usage.input)} tokens in (${k(run.usage.cached)} cached), ${k(run.usage.output)} out` : "";
+    const note =
+      [
+        run.outcome === "limit" ? `Paused after ${run.steps} steps. Say “continue” to keep going.` : run.outcome === "stopped" ? "Stopped." : "",
+        run.steps > 1 ? `${run.steps} steps` : "",
+        cost,
+      ]
+        .filter(Boolean)
+        .join(" · ") || undefined;
+    update(replyId, (m) => ({
+      ...m,
+      ...(note ? { note } : {}),
+      ...(run.outcome === "error" ? { error: `${run.error}${run.applied > 0 ? " Earlier steps were applied." : ""}` } : {}),
+    }));
+  };
+
+  const send = async (raw: string) => {
+    const text = raw.trim();
+    if (!text || busy) return;
+    const replyId = nextId();
+    setMessages((prev) => [...prev, { id: nextId(), role: "user", text }, { id: replyId, role: "assistant", items: [] }]);
+    setSent((s) => [...s.filter((x) => x !== text), text].slice(-30));
+    setRecall(-1);
+    setInput("");
+    setBusy(true);
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    try {
+      if (provider === "cursor") await runPlanner(text, replyId);
+      else if (noKey)
+        await runPlanner(text, replyId, `No ${providerName} key, so the built-in planner ran this. Add one under Key, or set ${st?.keyEnv ?? KEY_ENV[provider]} in .env.local and restart.`);
+      else await runAgent(text, replyId, ctrl.signal);
+    } catch (err) {
+      const aborted = err instanceof DOMException && err.name === "AbortError";
+      update(replyId, (m) => (aborted ? { ...m, note: "Stopped." } : { ...m, error: err instanceof Error ? err.message : "Something went wrong" }));
+    } finally {
+      setBusy(false);
+      setStep(0);
+      abortRef.current = null;
+    }
+  };
+
+  /** Coach buttons run through the same executor; a note keeps the model's history accurate. */
+  const runDirect = async (tool: string, args: Record<string, unknown>, summary: string) => {
+    const results = await executeCopilotActions([{ tool, args, summary }], host);
+    setMessages((prev) => [...prev, { id: nextId(), role: "assistant", items: results.map((r) => ({ kind: "result", result: r })) }]);
+    record({ role: "user", text: `[Studio note] I clicked “${summary}” in the suggestions. Result: ${results[0]?.message ?? ""}` });
+  };
+  const applyCard = (card: CueCard) => runDirect("apply_suggestion", { id: card.id }, card.fixLabel ?? card.title);
+  const fixAll = () => runDirect("fix_all", {}, "Apply all coach fixes");
+
+  const newChat = () => {
+    abortRef.current?.abort();
+    transcriptRef.current = [];
+    setMessages([]);
+  };
+
+  const visibleCards = showAllCards ? cards : cards.slice(0, 2);
+  const badge =
+    provider === "cursor"
+      ? "Offline"
+      : noKey
+        ? "No key"
+        : `${prettyModel(model.trim() || lastModel || st?.model)}${apiKey.trim() ? " · your key" : st?.configured ? " · server key" : ""}`;
 
   return (
-    <aside
-      className={`pointer-events-auto ${widthClass} rounded-[26px] liquid-glass flex flex-col overflow-hidden transition-all ${
-        isShaded ? "shrink-0" : "flex-1 min-h-0"
-      }`}
-    >
-      {/* 1. AI Copilot Header & 4-Provider Switcher (Cursor, Claude, ChatGPT, Grok) */}
-      <div className="p-3 border-b border-white/12 space-y-2.5 shrink-0">
-        <div className="flex items-center justify-between gap-1.5">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span
-              className="h-2.5 w-2.5 rounded-full shadow-[0_0_10px_currentColor] shrink-0"
-              style={{ backgroundColor: activeProviderMeta.accent, color: activeProviderMeta.accent }}
-            />
-            <span className="text-xs font-bold tracking-tight text-white truncate">AI Copilot</span>
-            <span className="text-[9.5px] px-2 py-0.5 rounded-full liquid-glass-well font-mono text-sky-300 shrink-0">
-              {activeProviderMeta.modelBadge}
-            </span>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={() => setShowKeyConfig(!showKeyConfig)}
-              title="Configure API Keys / MCP Endpoint"
-              className="px-2 py-0.5 rounded-full liquid-glass-button text-[10px] font-medium text-slate-300 hover:text-white"
-            >
-              {showKeyConfig ? "Hide Key" : "API"}
+    <aside className="pointer-events-auto w-full liquid-glass-pill rounded-[var(--radius-panel)] flex flex-col overflow-hidden flex-1 min-h-0" aria-label="Copilot">
+      {/* Header */}
+      <div className="px-3 pt-3 pb-2 space-y-2.5 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold">Copilot</span>
+          <span className={`text-[11px] truncate ${noKey ? "text-[#ff9f0a]" : "text-[var(--label-3)]"}`} data-testid="copilot-badge">
+            {badge}
+          </span>
+          <div className="flex-1" />
+          {messages.length > 0 && (
+            <button onClick={newChat} className="icon-btn h-7 w-auto px-2 text-[12px]" data-tip="Clear the conversation" data-tip-side="bottom">
+              New
             </button>
-            <button
-              onClick={() => setIsShaded(!isShaded)}
-              title={isShaded ? "Expand Copilot Body" : "Shade / Collapse Copilot Body"}
-              className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 flex items-center justify-center"
-            >
-              {isShaded ? "▾" : "–"}
+          )}
+          <button
+            onClick={() => setShowKey((v) => !v)}
+            aria-pressed={showKey}
+            className="icon-btn h-7 w-auto px-2 text-[12px]"
+            data-tip="API key and model for cloud models"
+            data-tip-side="bottom"
+          >
+            Key
+          </button>
+          {onHidePane && (
+            <button onClick={onHidePane} className="icon-btn h-7 w-7 text-[15px]" aria-label="Close copilot">
+              ×
             </button>
-            {onHidePane && (
-              <button
-                onClick={onHidePane}
-                title="Hide AI Copilot to Tool Rail"
-                className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-300 hover:text-white flex items-center justify-center"
-              >
-                ×
-              </button>
-            )}
-          </div>
+          )}
         </div>
-
-        {/* 4-Way Provider Pill Selector */}
-        <div className="grid grid-cols-4 gap-1 p-0.5 rounded-full liquid-glass-well text-[11px]">
-          {PROVIDERS.map((p) => {
-            const active = p.id === provider;
-            return (
-              <button
-                key={p.id}
-                onClick={() => setProvider(p.id)}
-                className={`whitespace-nowrap py-1 rounded-full font-semibold transition ${
-                  active ? "liquid-glass-active" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                {p.name}
-              </button>
-            );
-          })}
+        <div className="segmented" role="tablist" aria-label="Model">
+          {PROVIDERS.map((p) => (
+            <button key={p.id} role="tab" aria-pressed={p.id === provider} onClick={() => pickProvider(p.id)}>
+              {p.name}
+            </button>
+          ))}
         </div>
-
-        {/* Optional API Key / Cursor MCP CLI Drawer */}
-        {showKeyConfig && (
-          <div className="p-2.5 rounded-2xl liquid-glass-well space-y-2 text-[11px]">
-            <div className="flex items-center justify-between text-slate-300">
-              <span className="font-semibold">{activeProviderMeta.name} API Key (Optional)</span>
-              <span className="text-[10px] text-emerald-300">Local Tool Engine Active</span>
-            </div>
+        {showKey && (
+          <div className="space-y-1.5 animate-panel-in">
             <input
               type="password"
-              placeholder={`Paste ${activeProviderMeta.name} key or leave blank for built-in agent...`}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              className="w-full bg-white/8 border border-white/15 rounded-xl px-2.5 py-1 text-xs text-white placeholder:text-slate-500 focus:outline-none"
+              placeholder={provider === "cursor" ? "Built-in planner needs no key" : st?.configured ? `Server key in use (optional override)` : `${providerName} API key`}
+              disabled={provider === "cursor"}
+              autoComplete="off"
+              aria-label={`${providerName} API key`}
+              className="w-full h-7 rounded-[6px] bg-[var(--fill-3)] border border-[var(--separator)] px-2 text-[12px] placeholder:text-[var(--label-3)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
             />
-            <div className="text-[10px] text-slate-400 font-mono truncate">
-              CLI: spineforge-metal-cli export-all {project.id}
-            </div>
+            {provider !== "cursor" && (
+              <>
+                <input
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder={`Model (default ${st?.model ?? "from server"})`}
+                  list={`models-${provider}`}
+                  aria-label="Model id"
+                  className="w-full h-7 rounded-[6px] bg-[var(--fill-3)] border border-[var(--separator)] px-2 text-[12px] placeholder:text-[var(--label-3)] focus:outline-none focus:border-[var(--accent)]"
+                />
+                <datalist id={`models-${provider}`}>
+                  {(MODEL_SUGGESTIONS[provider] ?? []).map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              </>
+            )}
+            <p className="text-[10.5px] text-[var(--label-3)] leading-snug">
+              {provider === "cursor"
+                ? "Runs in the browser. No key, no network."
+                : `Kept in this tab only. Or set ${st?.keyEnv ?? KEY_ENV[provider]} in .env.local and restart the server.`}
+            </p>
           </div>
         )}
       </div>
 
-      {/* 2. Quick Action Chips for 1-Click AI Execution */}
-      {!isShaded && (
-        <>
-          <div className="px-3 py-2 border-b border-white/8 flex items-center gap-1.5 overflow-x-auto shrink-0">
-            {QUICK_PROMPTS.map((chip, idx) => (
-              <button
-                key={idx}
-                onClick={() => void sendPrompt(chip.prompt)}
-                className="whitespace-nowrap shrink-0 px-2.5 py-1 rounded-full liquid-glass-button text-[10px] font-medium text-sky-200 hover:text-white"
-              >
-                {chip.label}
+      {/* Coach cue cards */}
+      {cards.length > 0 && (
+        <section className="px-3 pb-2 shrink-0" aria-label="Suggestions">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="section-title">Suggestions for {activeClip}</span>
+            <span className="text-[11px] text-[var(--label-3)] tabular-nums">{cards.length}</span>
+            <div className="flex-1" />
+            {fixable > 1 && (
+              <button onClick={() => void fixAll()} disabled={busy} className="text-[12px] text-[var(--accent-hover)] hover:underline disabled:opacity-50">
+                Fix all
               </button>
-            ))}
+            )}
           </div>
-
-          {/* 3. Live Agent Chat & Tool Execution Stream */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`p-3 rounded-2xl space-y-2 ${
-                  msg.role === "user"
-                    ? "bg-sky-500/20 border border-sky-400/35 text-white ml-4"
-                    : "liquid-glass-well text-slate-200 mr-2"
-                }`}
-              >
-                <div className="flex items-center justify-between text-[10px] text-slate-400">
-                  <span className="font-bold uppercase tracking-wider text-sky-300">
-                    {msg.role === "user" ? "You" : `${msg.provider.toUpperCase()} Agent`}
-                  </span>
-                  <span>{msg.timestamp}</span>
-                </div>
-
-                <p className="leading-relaxed text-[11.5px] whitespace-pre-wrap">{msg.text}</p>
-
-                {/* Executed Tool Calls Cards */}
-                {msg.actions && msg.actions.length > 0 && (
-                  <div className="space-y-1 pt-1">
-                    {msg.actions.map((act, i) => (
-                      <div
-                        key={i}
-                        className="px-2.5 py-1.5 rounded-xl bg-emerald-500/12 border border-emerald-400/25 text-[10.5px] font-mono text-emerald-200 flex items-center gap-2"
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
-                        <span className="truncate">{act.summary}</span>
-                      </div>
-                    ))}
+          <div className="space-y-1.5 max-h-[38vh] overflow-y-auto">
+            {visibleCards.map((card) => (
+              <article key={card.id} className="rounded-[10px] bg-[var(--fill-3)] border border-[var(--separator)] p-2.5">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: SEVERITY_COLOR[card.severity] }}>
+                      {card.principle}
+                    </div>
+                    <div className="text-[12.5px] font-medium leading-snug mt-0.5">{card.title}</div>
+                    <p className="text-[11.5px] leading-snug text-[var(--label-2)] mt-0.5">{card.detail}</p>
                   </div>
-                )}
-              </div>
+                  {card.apply && (
+                    <button onClick={() => void applyCard(card)} disabled={busy} className="shrink-0 btn-primary h-7 px-2.5 text-[11.5px]">
+                      {card.fixLabel}
+                    </button>
+                  )}
+                </div>
+              </article>
             ))}
           </div>
-
-          {/* 4. Prompt Input Composer */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void sendPrompt(prompt);
-            }}
-            className="p-3 border-t border-white/10 flex items-center gap-2 shrink-0"
-          >
-            <input
-              type="text"
-              placeholder={`Ask ${activeProviderMeta.name} to rig, mesh, weight, or export...`}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="flex-1 min-w-0 liquid-glass-well rounded-full px-3.5 py-2 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-sky-400"
-            />
-            <button
-              type="submit"
-              disabled={isRunning || !prompt.trim()}
-              className="whitespace-nowrap shrink-0 px-3.5 py-2 rounded-full liquid-glass-active text-xs font-bold disabled:opacity-40"
-            >
-              {isRunning ? "..." : "Run"}
+          {cards.length > 2 && (
+            <button onClick={() => setShowAllCards((v) => !v)} className="mt-1 text-[11.5px] text-[var(--label-2)] hover:text-[var(--label)]">
+              {showAllCards ? "Show fewer" : `Show all ${cards.length}`}
             </button>
-          </form>
-        </>
+          )}
+        </section>
       )}
+
+      {/* Conversation */}
+      <div ref={threadRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2.5 border-t border-[var(--separator)]" aria-live="polite">
+        {messages.length === 0 && (
+          <div className="space-y-2 pt-1">
+            <p className="text-[12px] text-[var(--label-2)] leading-snug">
+              Ask in plain words. I can mesh, weight, rig, add physics, key, ease, break down, retime, review and export.
+              {provider === "cursor" ? " Chain steps with “then”." : " I see the result of every step and remember the conversation."}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {EXAMPLE_PROMPTS.map((p) => (
+                <button key={p} onClick={() => void send(p)} className="liquid-glass-button rounded-full px-2.5 py-1 text-[11.5px] text-left">
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {messages.map((m) =>
+          m.role === "user" ? (
+            <div key={m.id} className="flex justify-end">
+              <div className="max-w-[85%] rounded-[12px] rounded-br-[4px] bg-[var(--accent)] text-white px-2.5 py-1.5 text-[12.5px] leading-snug whitespace-pre-line">
+                {m.text}
+              </div>
+            </div>
+          ) : (
+            <div key={m.id} className="space-y-1" data-testid="copilot-reply">
+              {(m.items ?? []).length > 0 && (
+                <ul className="space-y-1">
+                  {m.items!.map((it, i) =>
+                    it.kind === "result" ? (
+                      <ResultRow key={i} r={it.result} />
+                    ) : (
+                      <li key={i} className="text-[12.5px] leading-snug text-[var(--label)] whitespace-pre-line">
+                        {it.text}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              )}
+              {m.error && <p className="text-[12px] leading-snug text-[#ff453a]">{m.error}</p>}
+              {m.note && <p className="text-[10.5px] text-[var(--label-3)]">{m.note}</p>}
+            </div>
+          ),
+        )}
+        {busy && (
+          <p className="text-[12px] text-[var(--label-3)]" role="status">
+            {provider === "cursor" || noKey ? "Working…" : `${providerName} is working${step > 1 ? ` · step ${step}` : ""}…`}
+          </p>
+        )}
+      </div>
+
+      {/* Composer */}
+      <form
+        className="p-2.5 border-t border-[var(--separator)] flex gap-2 items-end shrink-0"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send(input);
+        }}
+      >
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void send(input);
+            } else if (e.key === "ArrowUp" && !input.includes("\n") && sent.length > 0) {
+              e.preventDefault();
+              const i = recall < 0 ? sent.length - 1 : Math.max(0, recall - 1);
+              setRecall(i);
+              setInput(sent[i]!);
+            } else if (e.key === "ArrowDown" && recall >= 0) {
+              e.preventDefault();
+              const i = recall + 1;
+              setRecall(i >= sent.length ? -1 : i);
+              setInput(i >= sent.length ? "" : sent[i]!);
+            } else if (e.key === "Escape") {
+              if (busy) abortRef.current?.abort();
+              else (e.target as HTMLTextAreaElement).blur();
+            }
+          }}
+          rows={1}
+          placeholder="Ask Copilot… (↑ for history)"
+          aria-label="Ask Copilot"
+          className="flex-1 min-h-8 max-h-28 resize-none rounded-[8px] bg-[var(--fill-3)] border border-[var(--separator)] px-2.5 py-1.5 text-[12.5px] placeholder:text-[var(--label-3)] focus:outline-none focus:border-[var(--accent)]"
+        />
+        {busy ? (
+          <button type="button" onClick={() => abortRef.current?.abort()} className="liquid-glass-button h-8 px-3 rounded-[8px] text-[12.5px]">
+            Stop
+          </button>
+        ) : (
+          <button type="submit" disabled={!input.trim()} className="btn-primary h-8 px-3 text-[12.5px]">
+            Run
+          </button>
+        )}
+      </form>
     </aside>
   );
 }

@@ -2,89 +2,28 @@
 """Packages SpineForge.app as a standalone native macOS application bundle with:
 - Apple Metal 120Hz ProMotion binary (`Contents/MacOS/SpineForge`)
 - Apple Metal GPU CLI (`Contents/MacOS/spineforge-metal-cli`)
-- iOS 26 / macOS 26 Liquid Glass Squircle App Icon (`Contents/Resources/AppIcon.icns`)
+- Kinetic Pro app icon (`Contents/Resources/AppIcon.icns`, built by `npm run brand`)
 - Self-contained preset rigs & textures (`Contents/Resources/presets/`)
 - Ad-hoc code signature (`codesign --force --deep --sign -`)
 """
 
 from __future__ import annotations
 
-import math
 import plistlib
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 APP_BUNDLE = ROOT / "SpineForge.app"
-
-
-def make_liquid_glass_icon(size: int = 1024) -> Image.Image:
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-
-    margin = int(size * 0.08)
-    radius = int(size * 0.225)
-    box = [margin, margin, size - margin, size - margin]
-
-    # Deep Solarium dark-blue base squircle
-    base = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    bdraw = ImageDraw.Draw(base)
-    bdraw.rounded_rectangle(box, radius=radius, fill=(8, 15, 34, 255))
-
-    # Glowing cyan/indigo radial aura inside squircle
-    aura = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    adraw = ImageDraw.Draw(aura)
-    adraw.ellipse(
-        [int(size * 0.16), int(size * 0.12), int(size * 0.84), int(size * 0.82)],
-        fill=(34, 211, 238, 125),
-    )
-    adraw.ellipse(
-        [int(size * 0.28), int(size * 0.35), int(size * 0.78), int(size * 0.88)],
-        fill=(139, 92, 246, 110),
-    )
-    aura = aura.filter(ImageFilter.GaussianBlur(radius=size * 0.08))
-    img = Image.alpha_composite(base, aura)
-
-    # Liquid Glass Specular Rim & Inner Refraction
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle(
-        box,
-        radius=radius,
-        outline=(186, 230, 253, 210),
-        width=max(2, int(size * 0.012)),
-    )
-
-    # Draw stylized 2D Skeletal Bone + Delaunay Diamond Prism in center
-    cx, cy = size // 2, size // 2
-    pts = [
-        (cx, int(size * 0.23)),
-        (int(size * 0.72), cy),
-        (cx, int(size * 0.77)),
-        (int(size * 0.28), cy),
-    ]
-    draw.polygon(pts, fill=(14, 165, 233, 75), outline=(103, 232, 249, 240))
-    draw.line([pts[0], pts[2]], fill=(255, 255, 255, 230), width=max(2, int(size * 0.018)))
-    draw.line([pts[1], pts[3]], fill=(125, 211, 252, 190), width=max(2, int(size * 0.012)))
-
-    for px, py in pts + [(cx, cy)]:
-        r = int(size * 0.032) if (px, py) == (cx, cy) else int(size * 0.024)
-        draw.ellipse([px - r, py - r, px + r, py + r], fill=(255, 255, 255, 255), outline=(14, 165, 233, 255))
-
-    return img
+BRAND_ICNS = ROOT / "public" / "brand" / "AppIcon.icns"
 
 
 def build_icns(dest_icns: Path) -> None:
-    master = make_liquid_glass_icon(1024)
-    with tempfile.TemporaryDirectory() as tmp:
-        iconset = Path(tmp) / "AppIcon.iconset"
-        iconset.mkdir(parents=True, exist_ok=True)
-        for s in [16, 32, 128, 256, 512]:
-            master.resize((s, s), Image.Resampling.LANCZOS).save(iconset / f"icon_{s}x{s}.png")
-            master.resize((s * 2, s * 2), Image.Resampling.LANCZOS).save(iconset / f"icon_{s}x{s}@2x.png")
-        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(dest_icns)], check=True)
+    """Copies the brand icon (`npm run brand` renders it from scripts/brand.mjs)."""
+    if not BRAND_ICNS.exists():
+        raise SystemExit("public/brand/AppIcon.icns is missing: run `npm run brand` first.")
+    shutil.copy2(BRAND_ICNS, dest_icns)
 
 
 def package_app() -> None:

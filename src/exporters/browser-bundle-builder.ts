@@ -65,7 +65,7 @@ export async function buildBrowserUnityExportBundle(
   const atlasDataUrl = atlasCanvas.toDataURL("image/png");
 
   // 2. Build Spine 4.2 JSON, Unity .sfrig.json & Slot Suite .slotanim.json
-  const spineJson = JSON.stringify(exportSpine42Json(project, { bakeSprings: true, sampleRateHz: 24 }), null, 2);
+  const spineJson = JSON.stringify(exportSpine42Json(project, { physics: "native", sampleRateHz: 24 }), null, 2);
   const spineAtlasTxt = atlasLayout.spineAtlasText;
   const unitySfRigJson = JSON.stringify(
     exportUnityCustomRig(project, atlasLayout, { pixelsPerUnit: 100, sampleRateHz: 24 }),

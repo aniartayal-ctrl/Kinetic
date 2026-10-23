@@ -1,8 +1,10 @@
 "use client";
 
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { bakeClipConstraintsToKeyframes, sampleDeformTrack } from "@/core/animator";
-import { autoRigProject } from "@/core/auto-rigger";
+import { applyPose, breakdownKey, patchKeyAt, retimeClip, samplePose, snapTime, upsertKey } from "@/core/keyframes";
+import type { BonePose } from "@/core/solver";
 import { buildSymbolRigProject, getThemeSymbols, type SlotSymbolRole } from "@/core/batch-symbols-and-slot-stage";
 import {
   applyVoiceLipSyncToClip,
@@ -21,6 +23,7 @@ import {
 import { BUILTIN_PRESETS } from "@/core/presets";
 import {
   RIG_BONE_PALETTE,
+  type AnimationClip,
   type CurveType,
   type RigBone,
   type RigPart,
@@ -42,13 +45,33 @@ import {
   type WeightBrushMode,
 } from "@/core/weights";
 
+/** Sub-tool of the Pose mode, matching Spine's B / C / V / X tools. */
+export type TransformTool = "pose" | "rotate" | "translate" | "scale";
+
 export type StudioMode = "import" | "auto" | "rig" | "mesh" | "weights" | "liquify" | "animate" | "export";
+
+/**
+ * A request to replace the open document. UI anywhere calls `requestDocument`; the app shell runs it
+ * through one path that asks about unsaved changes first, so no button can silently discard work.
+ */
+export type DocumentRequest =
+  | { kind: "saved" | "preset"; id: string; title: string }
+  /** A character just cut by the importer; it is not saved until the user saves it. */
+  | { kind: "imported"; id: string; title: string; project: SpineForgeProject }
+  | { kind: "symbol"; id: SlotSymbolRole; title: string };
 
 export type HistorySnapshot = {
   id: string;
   label: string;
   timestamp: string;
-  projectJson: string;
+  /**
+   * The project at this point in history. Every store update builds a new object and copies only the
+   * branch it changes, so snapshots share untouched data (meshes, other clips) instead of
+   * serialising the whole project on every edit.
+   */
+  project: SpineForgeProject;
+  /** ms timestamp, used to merge rapid repeats of the same action into one undo step. */
+  at: number;
 };
 
 type OverlayToggleKey =
@@ -115,9 +138,23 @@ type StudioState = {
   physicsReport: VisualPhysicsReport;
 
   // Core Actions
+  /** Replaces the document without asking. UI code calls requestDocument instead. */
   loadPreset: (id: string) => void;
+  documentRequest: DocumentRequest | null;
+  requestDocument: (request: DocumentRequest | null) => void;
   setProject: (project: SpineForgeProject, historyLabel?: string) => void;
+  /** Replaces the document: resets selection, clip, playhead and undo history. */
+  openProject: (project: SpineForgeProject, historyLabel: string) => void;
   setMode: (mode: StudioMode) => void;
+  transformTool: TransformTool;
+  previousTool: { mode: StudioMode; transformTool: TransformTool } | null;
+  /** Switches tool and remembers the previous one (right-click on the canvas swaps back, as in Spine). */
+  chooseTool: (mode: StudioMode, transformTool?: TransformTool) => void;
+  swapToPreviousTool: () => void;
+  playDirection: 1 | -1;
+  setPlayDirection: (direction: 1 | -1) => void;
+  /** Live bone edit without an undo step (pivot drags); finish with commitPreview. */
+  previewBone: (boneName: string, patch: Partial<RigBone>) => void;
   selectBone: (name: string | null) => void;
   selectPart: (name: string | null) => void;
   setActiveClip: (clipName: string) => void;
@@ -128,7 +165,7 @@ type StudioState = {
   toggleOverlay: (key: OverlayToggleKey) => void;
   setLightParams: (angleDeg: number, intensity: number) => void;
   togglePartVisibility: (partName: string) => void;
-  movePartLayerOrder: (partName: string, direction: "up" | "down") => void;
+  movePartLayerOrder: (partName: string, direction: "up" | "down", steps?: number) => void;
 
   // History Actions
   pushHistory: (label: string, nextProject: SpineForgeProject) => void;
@@ -146,6 +183,7 @@ type StudioState = {
   setMobileProfileScale: (scale: 1 | 0.5) => void;
   setSlotStageMode: (stageMode: SlotSuiteStageMode) => void;
   setSlotOrientation: (orientation: SlotOrientationMode) => void;
+  /** Replaces the document without asking. UI code calls requestDocument instead. */
   loadSymbolRig: (role: SlotSymbolRole) => void;
   updateBone: (boneName: string, patch: Partial<RigBone>) => void;
   addBone: (parentBoneName: string, name: string, x: number, y: number) => void;
@@ -167,20 +205,51 @@ type StudioState = {
   setBoneKeyframeAtCurrentTime: (boneName: string, patch: Partial<TransformKey>) => void;
   setBoneCurveAtCurrentTime: (boneName: string, curve: CurveType) => void;
   deleteBoneKeyframe: (boneName: string, time: number) => void;
+
+  // Animator tools (graph editor, dope sheet, breakdowns, pose clipboard, clip timing)
+  /** Applies `fn` to the active clip. With a label it is one undo step; with `null` it is a live preview (drags). */
+  editActiveClip: (fn: (clip: AnimationClip) => AnimationClip, label: string | null) => void;
+  /** Records the current project as one undo step after a series of preview edits. */
+  commitPreview: (label: string) => void;
+  poseClipboard: Record<string, BonePose> | null;
+  copyPose: () => void;
+  pastePose: () => void;
+  /** Keys every bone (or just `bones`) at the playhead, `fraction` of the way between neighbouring keys. */
+  insertBreakdown: (fraction: number, bones?: string[]) => void;
+  setClipTiming: (patch: { duration?: number; fps?: number; loop?: boolean; stretch?: boolean }) => void;
   addAnimationEventAtCurrentTime: (name: string, stringParam?: string, floatParam?: number) => void;
   deleteAnimationEvent: (time: number, name: string) => void;
   regenerateAllProceduralClips: () => void;
   bakeCurrentClipSprings: () => void;
 };
 
+/** Applies a bone patch; moving a pivot or its regions rebuilds the skinned meshes that use it. */
+function patchBone(project: SpineForgeProject, boneName: string, patch: Partial<RigBone>): SpineForgeProject {
+  const bones = project.bones.map((b) => (b.name === boneName ? { ...b, ...patch } : b));
+  const next: SpineForgeProject = { ...project, bones };
+  if (patch.x !== undefined || patch.y !== undefined || patch.regions !== undefined || patch.feather !== undefined) {
+    next.parts = next.parts.map((part) =>
+      part.skin?.includes(boneName) ? { ...part, mesh: buildPartMesh(next, { ...part, mesh: undefined }) } : part,
+    );
+  }
+  return next;
+}
+
+/** Undo depth. Snapshots share structure, so 100 steps cost little memory. */
+const HISTORY_LIMIT = 100;
+
 function makeSnapshot(label: string, project: SpineForgeProject): HistorySnapshot {
   return {
     id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     label,
     timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-    projectJson: JSON.stringify(project),
+    project,
+    at: Date.now(),
   };
 }
+
+/** Repeats of the same action closer together than this become one undo step (slider drags, held keys). */
+const COALESCE_MS = 800;
 
 const initialProject = BUILTIN_PRESETS["astral-forge"]!();
 const initialPhysics = inferVisualPhysics(initialProject, "auto_detect");
@@ -195,6 +264,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   currentTime: 0,
   isPlaying: true,
   playbackSpeed: 1,
+  transformTool: "pose",
+  previousTool: null,
+  playDirection: 1,
 
   showMeshWireframe: true,
   showBones: true,
@@ -232,8 +304,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   pushHistory: (label, nextProject) => {
     const { history, historyIndex } = get();
+    const last = history[historyIndex];
+    const now = Date.now();
+    if (historyIndex > 0 && historyIndex === history.length - 1 && last && last.label === label && now - last.at < COALESCE_MS) {
+      set({ project: nextProject, history: [...history.slice(0, historyIndex), { ...last, project: nextProject, at: now }] });
+      return;
+    }
     const sliced = history.slice(0, historyIndex + 1);
-    const nextHist = [...sliced.slice(-24), makeSnapshot(label, nextProject)];
+    const nextHist = [...sliced.slice(-(HISTORY_LIMIT - 1)), makeSnapshot(label, nextProject)];
     set({
       project: nextProject,
       history: nextHist,
@@ -248,7 +326,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const snap = history[prevIdx];
     if (!snap) return;
     set({
-      project: JSON.parse(snap.projectJson) as SpineForgeProject,
+      project: snap.project,
       historyIndex: prevIdx,
     });
   },
@@ -260,7 +338,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const snap = history[nextIdx];
     if (!snap) return;
     set({
-      project: JSON.parse(snap.projectJson) as SpineForgeProject,
+      project: snap.project,
       historyIndex: nextIdx,
     });
   },
@@ -270,26 +348,37 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const snap = history[index];
     if (!snap) return;
     set({
-      project: JSON.parse(snap.projectJson) as SpineForgeProject,
+      project: snap.project,
       historyIndex: index,
     });
   },
+
+  documentRequest: null,
+  requestDocument: (documentRequest) => set({ documentRequest }),
 
   loadPreset: (id) => {
     const factory = BUILTIN_PRESETS[id];
     if (!factory) return;
     const project = factory();
+    get().openProject(project, `Loaded ${project.title}`);
+  },
+
+  openProject: (project, historyLabel) => {
     const { report } = inferVisualPhysics(project, "auto_detect");
+    const clips = Object.keys(project.animations);
     set({
       project,
-      selectedBone: project.bones[1]?.name ?? "root",
+      selectedBone: project.bones[1]?.name ?? project.bones[0]?.name ?? "root",
       selectedPart: project.parts.find((p) => p.skin && p.skin.length > 1)?.name ?? project.parts[0]?.name ?? null,
-      activeClip: "strike",
+      activeClip: project.animations.strike ? "strike" : (clips[0] ?? "idle"),
       activeSkinName: "default",
       currentTime: 0,
+      isPlaying: false,
       hiddenParts: [],
+      lockedBones: [],
+      poseClipboard: null,
       physicsReport: report,
-      history: [makeSnapshot(`Loaded ${project.title}`, project)],
+      history: [makeSnapshot(historyLabel, project)],
       historyIndex: 0,
     });
   },
@@ -305,6 +394,21 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       showMeshWireframe: mode === "mesh" || mode === "weights" || mode === "liquify" || get().showMeshWireframe,
     });
   },
+
+  chooseTool: (mode, transformTool) => {
+    const s = get();
+    const nextTransform = transformTool ?? s.transformTool;
+    if (mode === s.mode && nextTransform === s.transformTool) return;
+    set({ previousTool: { mode: s.mode, transformTool: s.transformTool }, transformTool: nextTransform });
+    s.setMode(mode);
+  },
+
+  swapToPreviousTool: () => {
+    const prev = get().previousTool;
+    if (prev) get().chooseTool(prev.mode, prev.transformTool);
+  },
+
+  setPlayDirection: (playDirection) => set({ playDirection }),
 
   selectBone: (selectedBone) => set({ selectedBone }),
   selectPart: (selectedPart) => set({ selectedPart }),
@@ -324,13 +428,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         : [...state.hiddenParts, partName],
     })),
 
-  movePartLayerOrder: (partName, direction) => {
+  movePartLayerOrder: (partName, direction, steps = 1) => {
     const state = get();
     const parts = [...state.project.parts];
     const idx = parts.findIndex((p) => p.name === partName);
     if (idx < 0) return;
-    const targetIdx = direction === "up" ? idx + 1 : idx - 1;
-    if (targetIdx < 0 || targetIdx >= parts.length) return;
+    const targetIdx = Math.max(0, Math.min(parts.length - 1, idx + (direction === "up" ? steps : -steps)));
+    if (targetIdx === idx) return;
     const [item] = parts.splice(idx, 1);
     parts.splice(targetIdx, 0, item!);
     state.pushHistory(`Reordered Layer ${partName}`, { ...state.project, parts });
@@ -478,17 +582,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   updateBone: (boneName, patch) => {
     const state = get();
-    const bones = state.project.bones.map((b) => (b.name === boneName ? { ...b, ...patch } : b));
-    const nextProject: SpineForgeProject = { ...state.project, bones };
-    if (patch.x !== undefined || patch.y !== undefined || patch.regions !== undefined || patch.feather !== undefined) {
-      nextProject.parts = nextProject.parts.map((part) => {
-        if (part.skin?.includes(boneName)) {
-          return { ...part, mesh: buildPartMesh(nextProject, { ...part, mesh: undefined }) };
-        }
-        return part;
-      });
-    }
-    state.pushHistory(`Adjusted Bone ${boneName}`, nextProject);
+    state.pushHistory(`Adjusted Bone ${boneName}`, patchBone(state.project, boneName, patch));
+  },
+
+  previewBone: (boneName, patch) => {
+    set({ project: patchBone(get().project, boneName, patch) });
   },
 
   addBone: (parentBoneName, name, x, y) => {
@@ -534,7 +632,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           : ik,
       ),
     };
-    state.pushHistory(`IK Pin ${ikName} (${Math.round(mix * 100)}%)`, nextProject);
+    // No value in the label, so dragging the mix slider coalesces into one undo step.
+    state.pushHistory(`IK Pin ${ikName}`, nextProject);
   },
 
   regeneratePartMesh: (partName, density, weightMode) => {
@@ -587,7 +686,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const mesh = part.mesh ?? buildPartMesh(project, part);
       const vCount = mesh.positions.length / 2;
 
-      const t = Number(currentTime.toFixed(2));
+      const fps = clip.fps || 30;
+      // Warp keys land on frames, like bone keys.
+      const t = snapTime(currentTime, fps, clip.duration);
       const existingDeformTrack = [...(clip.deformTracks?.[partName] ?? [])];
       const currentOffsets = sampleDeformTrack(existingDeformTrack, t, vCount);
       const nextOffsets = paintFfdLiquifyStroke(mesh, currentOffsets, {
@@ -600,7 +701,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         mode: liquifyMode,
       });
 
-      const keyIdx = existingDeformTrack.findIndex((k) => Math.abs(k.time - t) < 0.03);
+      const keyIdx = existingDeformTrack.findIndex((k) => Math.abs(k.time - t) < 0.5 / fps);
       if (keyIdx >= 0) {
         existingDeformTrack[keyIdx] = { ...existingDeformTrack[keyIdx]!, offsets: nextOffsets };
       } else {
@@ -657,43 +758,19 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setBoneKeyframeAtCurrentTime: (boneName, patch) => {
     const state = get();
-    const { project, activeClip, currentTime } = state;
-    const clip = project.animations[activeClip];
+    const clip = state.project.animations[state.activeClip];
     if (!clip) return;
-
-    const t = Number(currentTime.toFixed(3));
-    const existingTrack = [...(clip.boneTracks[boneName] ?? [])];
-    const idx = existingTrack.findIndex((k) => Math.abs(k.time - t) < 0.02);
-
-    if (idx >= 0) {
-      existingTrack[idx] = { ...existingTrack[idx]!, ...patch, time: existingTrack[idx]!.time };
-    } else {
-      existingTrack.push({
-        time: t,
-        r: patch.r ?? 0,
-        x: patch.x ?? 0,
-        y: patch.y ?? 0,
-        sx: patch.sx ?? 1,
-        sy: patch.sy ?? 1,
-        curve: patch.curve,
-      });
-      existingTrack.sort((a, b) => a.time - b.time);
+    // Keys land on whole frames; channels not in `patch` keep their current pose (never reset to 0).
+    const t = snapTime(state.currentTime, clip.fps || 30, clip.duration);
+    if (Math.abs(t - state.currentTime) > 1e-4) set({ currentTime: t });
+    const { curve, time: _ignored, ...channels } = patch;
+    void _ignored;
+    let track = patchKeyAt(clip.boneTracks[boneName] ?? [], t, channels as Partial<Record<"r" | "x" | "y" | "sx" | "sy", number>>);
+    if (curve !== undefined) {
+      const idx = track.findIndex((k) => Math.abs(k.time - t) < 1e-4);
+      track = track.map((k, i) => (i === idx ? { ...k, curve } : k));
     }
-
-    const nextProject = {
-      ...project,
-      animations: {
-        ...project.animations,
-        [activeClip]: {
-          ...clip,
-          boneTracks: {
-            ...clip.boneTracks,
-            [boneName]: existingTrack,
-          },
-        },
-      },
-    };
-    state.pushHistory(`Keyed ${boneName} @ ${t.toFixed(2)}s`, nextProject);
+    state.editActiveClip((c) => ({ ...c, boneTracks: { ...c.boneTracks, [boneName]: track } }), `Keyed ${boneName} @ ${t.toFixed(2)}s`);
   },
 
   setBoneCurveAtCurrentTime: (boneName, curve) => {
@@ -727,6 +804,73 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     state.pushHistory(`Set Curve on ${boneName}`, nextProject);
   },
 
+  editActiveClip: (fn, label) => {
+    const state = get();
+    const clip = state.project.animations[state.activeClip];
+    if (!clip) return;
+    const nextClip = fn(clip);
+    if (nextClip === clip) return;
+    const nextProject = {
+      ...state.project,
+      animations: { ...state.project.animations, [state.activeClip]: nextClip },
+    };
+    if (label) state.pushHistory(label, nextProject);
+    else set({ project: nextProject });
+  },
+
+  commitPreview: (label) => {
+    const state = get();
+    if (state.history[state.historyIndex]?.project === state.project) return;
+    state.pushHistory(label, state.project);
+  },
+
+  poseClipboard: null,
+
+  copyPose: () => {
+    const state = get();
+    const clip = state.project.animations[state.activeClip];
+    if (!clip) return;
+    set({ poseClipboard: samplePose(clip, state.project.bones.map((b) => b.name), state.currentTime) });
+  },
+
+  pastePose: () => {
+    const state = get();
+    const pose = state.poseClipboard;
+    if (!pose) return;
+    const t = Number(state.currentTime.toFixed(4));
+    state.editActiveClip((clip) => ({ ...clip, boneTracks: applyPose(clip.boneTracks, pose, t) }), `Pasted Pose @ ${t.toFixed(2)}s`);
+  },
+
+  insertBreakdown: (fraction, bones) => {
+    const state = get();
+    const t = Number(state.currentTime.toFixed(4));
+    const names = bones ?? state.project.bones.map((b) => b.name);
+    state.editActiveClip((clip) => {
+      const boneTracks = { ...clip.boneTracks };
+      let changed = false;
+      for (const name of names) {
+        const key = breakdownKey(boneTracks[name] ?? [], t, fraction);
+        if (!key) continue;
+        boneTracks[name] = upsertKey(boneTracks[name] ?? [], key).track;
+        changed = true;
+      }
+      return changed ? { ...clip, boneTracks } : clip;
+    }, `Breakdown ${Math.round(fraction * 100)}% @ ${t.toFixed(2)}s`);
+  },
+
+  setClipTiming: ({ duration, fps, loop, stretch }) => {
+    const state = get();
+    state.editActiveClip((clip) => {
+      let next = clip;
+      if (duration !== undefined && Math.abs(duration - clip.duration) > 1e-4) next = retimeClip(next, duration, Boolean(stretch));
+      if (fps !== undefined && fps !== next.fps) next = { ...next, fps };
+      if (loop !== undefined && loop !== next.loop) next = { ...next, loop };
+      return next;
+    }, "Clip Timing");
+    const clip = get().project.animations[state.activeClip];
+    if (clip && get().currentTime > clip.duration) set({ currentTime: clip.duration });
+  },
+
   deleteBoneKeyframe: (boneName, time) => {
     const state = get();
     const { project, activeClip } = state;
@@ -754,8 +898,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const { project, activeClip, currentTime } = state;
     const clip = project.animations[activeClip];
     if (!clip) return;
-    const t = Number(currentTime.toFixed(2));
-    const events = [...(clip.events ?? [])].filter((e) => !(Math.abs(e.time - t) < 0.02 && e.name === name));
+    const fps = clip.fps || 30;
+    const t = snapTime(currentTime, fps, clip.duration);
+    const events = [...(clip.events ?? [])].filter((e) => !(Math.abs(e.time - t) < 0.5 / fps && e.name === name));
     events.push({ time: t, name, stringParam, floatParam });
     events.sort((a, b) => a.time - b.time);
 
@@ -769,7 +914,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         },
       },
     };
-    state.pushHistory(`Added Event ${name} @ ${t}s`, nextProject);
+    state.pushHistory(`Added Event ${name} @ frame ${Math.round(t * fps)}`, nextProject);
   },
 
   deleteAnimationEvent: (time, name) => {
@@ -815,3 +960,22 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     state.pushHistory(`Baked Springs (${state.activeClip})`, nextProject);
   },
 }));
+
+const omitTime = (s: StudioState) => {
+  const { currentTime, ...rest } = s;
+  void currentTime;
+  return rest;
+};
+
+/**
+ * The whole store except the playhead. During playback the playhead changes every frame, so panels
+ * that do not draw it read the store through this hook and stay still while the canvas plays.
+ */
+export function useStudioNoTime() {
+  return useStudioStore(useShallow(omitTime));
+}
+
+/** The playhead for readouts: exact while paused, a few updates a second while playing. */
+export function useReadoutTime() {
+  return useStudioStore((s) => (s.isPlaying ? Math.floor(s.currentTime * 5) / 5 : s.currentTime));
+}

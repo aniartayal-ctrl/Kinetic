@@ -210,7 +210,10 @@ export function exportUnityCustomRig(
 
   const animations: UnitySfRigClip[] = [];
   for (const [clipName, rawClip] of Object.entries(project.animations)) {
-    const baked = bakeClipConstraintsToKeyframes(project, rawClip, sampleRateHz);
+    // Bake at the clip's own frame rate (never below 30 Hz) so short, snappy timing
+    // authored at 60 fps survives the runtime's linear interpolation.
+    const clipRate = Math.max(sampleRateHz, rawClip.fps || 0, 30);
+    const baked = bakeClipConstraintsToKeyframes(project, rawClip, clipRate);
     const boneTracks: UnitySfRigClip["boneTracks"] = [];
 
     project.bones.forEach((bone, bIdx) => {
@@ -230,7 +233,7 @@ export function exportUnityCustomRig(
     });
 
     const animEval = new SpineForgeAnimator(project, clipName);
-    const steps = Math.max(2, Math.round(rawClip.duration * sampleRateHz));
+    const steps = Math.max(2, Math.round(rawClip.duration * clipRate));
     const drawOrderKeys: UnitySfRigClip["drawOrderKeys"] = [];
     let prevSig = "";
     for (let s = 0; s <= steps; s++) {

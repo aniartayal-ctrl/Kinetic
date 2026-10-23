@@ -12,7 +12,8 @@ import {
   profileProjectForUnityMobile,
   type ElementalVfxType,
 } from "@/core/vfx-colliders-profiler";
-import { useStudioStore } from "@/store/useStudioStore";
+import { useStudioNoTime } from "@/store/useStudioStore";
+import { heroTemplate } from "./ProjectsMenu";
 
 const ARCHETYPE_OPTIONS: { id: AutoArchetypeId; label: string }[] = [
   { id: "auto_detect", label: "Auto-Detect from Visuals" },
@@ -25,15 +26,14 @@ const ARCHETYPE_OPTIONS: { id: AutoArchetypeId; label: string }[] = [
 
 const VFX_OPTIONS: { id: ElementalVfxType; label: string }[] = [
   { id: "none", label: "Off" },
-  { id: "lightning_bolts", label: "⚡ Bolts" },
-  { id: "fire_aura", label: "🔥 Fire" },
-  { id: "shockwave_rings", label: "💥 Rings" },
-  { id: "coin_fountain", label: "🪙 Coins" },
-  { id: "star_sparks", label: "✨ Stars" },
+  { id: "lightning_bolts", label: "Bolts" },
+  { id: "fire_aura", label: "Fire" },
+  { id: "shockwave_rings", label: "Rings" },
+  { id: "coin_fountain", label: "Coins" },
+  { id: "star_sparks", label: "Stars" },
 ];
 
 export function AutoModeDock({
-  onShipToUnity,
   onHidePane,
 }: {
   onShipToUnity: () => Promise<void>;
@@ -50,8 +50,7 @@ export function AutoModeDock({
     mobileProfileScale,
     slotStageMode,
     slotOrientation,
-    loadPreset,
-    loadSymbolRig,
+    requestDocument,
     runOneClickAutoRig,
     runAutoModeSelectAction,
     updatePrinciples,
@@ -61,11 +60,7 @@ export function AutoModeDock({
     setMobileProfileScale,
     setSlotStageMode,
     setSlotOrientation,
-    undo,
-    redo,
-    history,
-    historyIndex,
-  } = useStudioStore();
+  } = useStudioNoTime();
 
   const [isShaded, setIsShaded] = useState(false);
 
@@ -81,50 +76,27 @@ export function AutoModeDock({
 
   return (
     <aside
-      className={`pointer-events-auto w-84 rounded-[26px] liquid-glass flex flex-col overflow-hidden transition-all ${
+      className={`pointer-events-auto w-[320px] rounded-[var(--radius-panel)] liquid-glass flex flex-col overflow-hidden transition-all ${
         isShaded ? "shrink-0" : "flex-1 min-h-0"
       }`}
     >
       {/* 1. Header + Magic Wand Auto-Rig + Shade/Hide Controls */}
       <div className="p-3 border-b border-white/12 flex items-center justify-between gap-2 shrink-0">
         <div className="min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 flex items-center gap-1">
-            <span>🪄 Magic Wand Auto-Rig (A)</span>
+          <span className="text-[11px] font-semibold text-[var(--label-2)] flex items-center gap-1">
+            <span>Auto Rig</span>
           </span>
           <h2 className="text-xs font-bold text-white truncate">
-            Visual Physics & 14 Game Actions
+            Physics and game actions
           </h2>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={undo}
-            disabled={historyIndex <= 0}
-            title="Undo (⌘Z)"
-            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35 flex items-center justify-center"
-          >
-            ↶
-          </button>
-          <button
-            onClick={redo}
-            disabled={historyIndex >= history.length - 1}
-            title="Redo (⇧⌘Z)"
-            className="w-6 h-6 rounded-full liquid-glass-button text-[11px] font-bold text-slate-200 disabled:opacity-35 flex items-center justify-center"
-          >
-            ↷
-          </button>
-          <button
             onClick={runOneClickAutoRig}
             title="Run 1-Click Magic Wand Auto-Rig & Physics Inference"
-            className="whitespace-nowrap px-2 py-1 rounded-full text-[10px] font-bold bg-gradient-to-b from-cyan-300 to-sky-500 text-slate-950 shadow hover:brightness-110 transition"
+            className="whitespace-nowrap px-2 py-1 rounded-full text-[10px] font-bold btn-primary"
           >
-            🪄 Rig
-          </button>
-          <button
-            onClick={() => void onShipToUnity()}
-            title="Build & Open Export Unity Pane"
-            className="whitespace-nowrap px-2.5 py-1 rounded-full text-[10.5px] font-bold bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 shadow hover:brightness-110 transition"
-          >
-            Ship
+            Rig
           </button>
           <button
             onClick={() => setIsShaded(!isShaded)}
@@ -150,10 +122,10 @@ export function AutoModeDock({
         {/* 2. Visual Physics Inference Card ("Learned by Looking at Object") */}
         <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-cyan-300">
+            <span className="section-title">
               Visual Physics Learner
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-200 font-mono font-semibold uppercase">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-200 tabular-nums font-semibold uppercase">
               {physicsReport.inferredArchetype.replace("_", " ")}
             </span>
           </div>
@@ -172,7 +144,7 @@ export function AutoModeDock({
             ))}
           </select>
 
-          <div className="grid grid-cols-3 gap-1.5 text-[10px] font-mono">
+          <div className="grid grid-cols-3 gap-1.5 text-[10px] tabular-nums">
             <div className="p-1.5 rounded-xl bg-white/6 border border-white/10 text-center">
               <div className="text-slate-400">Mass</div>
               <div className="text-white font-bold">{physicsReport.estimatedMassKg} kg</div>
@@ -195,7 +167,7 @@ export function AutoModeDock({
             {physicsReport.partTelemetry.slice(0, 5).map((pt) => (
               <span
                 key={pt.partName}
-                className="text-[9.5px] px-2 py-0.5 rounded-full bg-white/8 border border-white/12 text-slate-300 font-mono"
+                className="text-[9.5px] px-2 py-0.5 rounded-full bg-white/8 border border-white/12 text-slate-300 tabular-nums"
               >
                 {pt.partName}: <strong className="text-sky-200">{pt.material.replace("_", " ")}</strong> ({pt.stiffness}k)
               </span>
@@ -206,7 +178,7 @@ export function AutoModeDock({
         {/* 3. GPU Elemental VFX & 2.5D Parallax / Voice Lip-Sync Card */}
         <div className="p-3 rounded-2xl liquid-glass-well space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-amber-300">
+            <span className="section-title">
               Elemental VFX & 2.5D Parallax
             </span>
             <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
@@ -214,7 +186,7 @@ export function AutoModeDock({
                 type="checkbox"
                 checked={parallax.enabled}
                 onChange={(e) => setParallaxConfig({ enabled: e.target.checked })}
-                className="accent-sky-400"
+                
               />
               2.5D Turn
             </label>
@@ -227,7 +199,7 @@ export function AutoModeDock({
                 onClick={() => setActiveVfx(vfx.id)}
                 className={`py-1 px-1.5 rounded-lg text-[10.5px] font-semibold transition ${
                   activeVfx === vfx.id
-                    ? "bg-amber-400 text-slate-950 shadow-sm"
+                    ? "liquid-glass-active"
                     : "bg-white/6 text-slate-300 hover:bg-white/12"
                 }`}
               >
@@ -248,7 +220,7 @@ export function AutoModeDock({
                   onClick={() => applyVoiceLipSync(vp.id)}
                   className="px-2 py-0.5 rounded-full liquid-glass-button text-[9.5px] font-medium text-sky-200 hover:text-white"
                 >
-                  🎙 {vp.transcript}
+                  {vp.transcript}
                 </button>
               ))}
             </div>
@@ -258,7 +230,7 @@ export function AutoModeDock({
         {/* 4. Slot Game Stage Choreographer (Tumble/Cascade, Big Win Odometer, 2-Scatter Fire, Hold & Spin) */}
         <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-amber-300">
+            <span className="section-title">
               Slot Stage Choreographer
             </span>
             <button
@@ -267,7 +239,7 @@ export function AutoModeDock({
                   slotOrientation === "landscape_16_9" ? "portrait_9_16" : "landscape_16_9",
                 )
               }
-              className="text-[9.5px] px-2 py-0.5 rounded-full bg-white/10 text-sky-200 font-mono"
+              className="text-[9.5px] px-2 py-0.5 rounded-full bg-white/10 text-sky-200 tabular-nums"
             >
               {slotOrientation === "landscape_16_9" ? "16:9 Desktop" : "9:16 Mobile"}
             </button>
@@ -275,13 +247,13 @@ export function AutoModeDock({
           <div className="grid grid-cols-2 gap-1.5">
             {(
               [
-                { id: "reel_tumble_cascade", label: "⚡ Tumble & 500× Orb" },
-                { id: "big_win_ladder", label: "🏆 4-Tier Big Win" },
+                { id: "reel_tumble_cascade", label: "Tumble & 500× Orb" },
+                { id: "big_win_ladder", label: "4-Tier Big Win" },
                 { id: "expanding_wild_reel", label: "🃏 1×3 Expanding Wild" },
-                { id: "bonus_wheel", label: "🎡 Bonus Wheel Spin" },
-                { id: "scatter_anticipation", label: "🔥 2-Scatter Fire" },
-                { id: "hold_and_spin_coins", label: "🪙 Hold & Spin" },
-                { id: "feature_splash", label: "✨ Feature Splash" },
+                { id: "bonus_wheel", label: "Bonus Wheel Spin" },
+                { id: "scatter_anticipation", label: "2-Scatter Fire" },
+                { id: "hold_and_spin_coins", label: "Hold & Spin" },
+                { id: "feature_splash", label: "Feature Splash" },
                 { id: "off", label: "Hide Stage" },
               ] as const
             ).map((st) => (
@@ -290,7 +262,7 @@ export function AutoModeDock({
                 onClick={() => setSlotStageMode(st.id)}
                 className={`py-1.5 px-2 rounded-xl text-[10px] font-semibold truncate transition ${
                   slotStageMode === st.id
-                    ? "bg-amber-400 text-slate-950 font-bold shadow"
+                    ? "liquid-glass-active font-semibold"
                     : "bg-white/6 text-slate-300 hover:bg-white/12"
                 }`}
               >
@@ -304,16 +276,16 @@ export function AutoModeDock({
             <span className="text-[9.5px] text-slate-400 font-semibold">WebAudio Synth:</span>
             {(
               [
-                { id: "tick", label: "🔊 Tick" },
-                { id: "slam", label: "🔊 Slam" },
-                { id: "scatter_riser", label: "🔊 Riser" },
-                { id: "jackpot_fanfare", label: "🔊 Fanfare" },
+                { id: "tick", label: "Tick" },
+                { id: "slam", label: "Slam" },
+                { id: "scatter_riser", label: "Riser" },
+                { id: "jackpot_fanfare", label: "Fanfare" },
               ] as const
             ).map((snd) => (
               <button
                 key={snd.id}
                 onClick={() => playProceduralSlotSound(snd.id)}
-                className="px-1.5 py-0.5 rounded-full bg-white/8 hover:bg-white/16 text-[9px] text-amber-200 font-mono"
+                className="px-1.5 py-0.5 rounded-full bg-white/8 hover:bg-white/16 text-[9px] text-amber-200 tabular-nums"
               >
                 {snd.label}
               </button>
@@ -324,13 +296,11 @@ export function AutoModeDock({
         {/* 5. Batch 8-Symbol Pack Auto-Rigger (Switch between Hero & All 8 Slot Symbols) */}
         <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-300">
+            <span className="section-title">
               Batch 8-Symbol Auto-Rigger
             </span>
             <button
-              onClick={() =>
-                loadPreset(project.id.includes("solara") ? "sands-of-solara" : "astral-forge")
-              }
+              onClick={() => requestDocument(heroTemplate(project.id))}
               className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 font-semibold"
             >
               Load Hero Rig
@@ -342,7 +312,7 @@ export function AutoModeDock({
               return (
                 <button
                   key={sym.role}
-                  onClick={() => loadSymbolRig(sym.role)}
+                  onClick={() => requestDocument({ kind: "symbol", id: sym.role, title: sym.label })}
                   title={`Auto-Rig & Animate ${sym.label}`}
                   className={`p-1.5 rounded-xl border flex flex-col items-center gap-0.5 transition ${
                     active
@@ -352,7 +322,7 @@ export function AutoModeDock({
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={sym.src} alt={sym.label} className="w-8 h-8 object-contain" />
-                  <span className="text-[9px] font-mono uppercase font-bold">{sym.role}</span>
+                  <span className="text-[9px] tabular-nums uppercase font-bold">{sym.role}</span>
                 </button>
               );
             })}
@@ -362,17 +332,17 @@ export function AutoModeDock({
         {/* 5. 12 Principles of 2D Animation Live Dials */}
         <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-purple-300">
+            <span className="section-title">
               12 Principles of 2D Animation
             </span>
-            <span className="text-[10px] font-mono text-slate-400">sx·sy=1.0</span>
+            <span className="text-[10px] tabular-nums text-slate-400">sx·sy=1.0</span>
           </div>
 
           <div className="grid grid-cols-2 gap-2.5 text-[10.5px]">
             <label className="space-y-0.5">
               <div className="flex justify-between text-slate-300">
                 <span>Squash & Stretch</span>
-                <span className="font-mono text-white">{Math.round(principles.squashAndStretch * 100)}%</span>
+                <span className="tabular-nums text-white">{Math.round(principles.squashAndStretch * 100)}%</span>
               </div>
               <input
                 type="range"
@@ -381,14 +351,14 @@ export function AutoModeDock({
                 step="0.1"
                 value={principles.squashAndStretch}
                 onChange={(e) => updatePrinciples({ squashAndStretch: parseFloat(e.target.value) })}
-                className="w-full accent-purple-400"
+                className="w-full"
               />
             </label>
 
             <label className="space-y-0.5">
               <div className="flex justify-between text-slate-300">
                 <span>Anticipation</span>
-                <span className="font-mono text-white">{Math.round(principles.anticipation * 100)}%</span>
+                <span className="tabular-nums text-white">{Math.round(principles.anticipation * 100)}%</span>
               </div>
               <input
                 type="range"
@@ -397,14 +367,14 @@ export function AutoModeDock({
                 step="0.1"
                 value={principles.anticipation}
                 onChange={(e) => updatePrinciples({ anticipation: parseFloat(e.target.value) })}
-                className="w-full accent-purple-400"
+                className="w-full"
               />
             </label>
 
             <label className="space-y-0.5">
               <div className="flex justify-between text-slate-300">
                 <span>Overlap / Trail</span>
-                <span className="font-mono text-white">{Math.round(principles.followThroughOverlap * 100)}%</span>
+                <span className="tabular-nums text-white">{Math.round(principles.followThroughOverlap * 100)}%</span>
               </div>
               <input
                 type="range"
@@ -413,14 +383,14 @@ export function AutoModeDock({
                 step="0.1"
                 value={principles.followThroughOverlap}
                 onChange={(e) => updatePrinciples({ followThroughOverlap: parseFloat(e.target.value) })}
-                className="w-full accent-purple-400"
+                className="w-full"
               />
             </label>
 
             <label className="space-y-0.5">
               <div className="flex justify-between text-slate-300">
                 <span>Exaggeration</span>
-                <span className="font-mono text-white">{Math.round(principles.exaggeration * 100)}%</span>
+                <span className="tabular-nums text-white">{Math.round(principles.exaggeration * 100)}%</span>
               </div>
               <input
                 type="range"
@@ -429,7 +399,7 @@ export function AutoModeDock({
                 step="0.1"
                 value={principles.exaggeration}
                 onChange={(e) => updatePrinciples({ exaggeration: parseFloat(e.target.value) })}
-                className="w-full accent-purple-400"
+                className="w-full"
               />
             </label>
           </div>
@@ -438,7 +408,7 @@ export function AutoModeDock({
         {/* 6. Unity Mobile VRAM / Overdraw / Draw-Call Profiler (@1x vs @0.5x) */}
         <div className="p-3 rounded-2xl liquid-glass-well space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-sky-300">
+            <span className="section-title">
               Unity Mobile VRAM Profiler
             </span>
             <div className="flex gap-1">
@@ -446,7 +416,7 @@ export function AutoModeDock({
                 <button
                   key={sc}
                   onClick={() => setMobileProfileScale(sc)}
-                  className={`px-2 py-0.5 rounded-full text-[9.5px] font-mono font-bold ${
+                  className={`px-2 py-0.5 rounded-full text-[9.5px] tabular-nums font-bold ${
                     mobileProfileScale === sc
                       ? "bg-sky-400 text-slate-950"
                       : "bg-white/8 text-slate-300"
@@ -457,7 +427,7 @@ export function AutoModeDock({
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-1.5 text-[10px] font-mono">
+          <div className="grid grid-cols-3 gap-1.5 text-[10px] tabular-nums">
             <div className="p-1.5 rounded-xl bg-white/6 border border-white/10 text-center">
               <div className="text-slate-400">ASTC VRAM</div>
               <div className="text-emerald-300 font-bold">{mobileProfile.astcCompressedVramMB} MB</div>
@@ -473,7 +443,7 @@ export function AutoModeDock({
               <div className="text-amber-300 font-bold">{mobileProfile.batchedDrawCalls} Batch</div>
             </div>
           </div>
-          <div className="text-[10px] text-emerald-300 font-mono text-center">
+          <div className="text-[10px] text-emerald-300 tabular-nums text-center">
             Grade: {mobileProfile.performanceGrade}
           </div>
         </div>
@@ -509,7 +479,7 @@ export function AutoModeDock({
                           </div>
                         </div>
                         <span
-                          className={`whitespace-nowrap shrink-0 text-[9.5px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                          className={`whitespace-nowrap shrink-0 text-[9.5px] px-2 py-0.5 rounded-full tabular-nums font-bold ${
                             isSelected
                               ? "bg-sky-400 text-slate-950"
                               : "bg-white/10 text-sky-300"

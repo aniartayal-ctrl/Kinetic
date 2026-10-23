@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SpineForge — 2D Mesh, Rigging & Animation Studio for Unity",
+  title: "Kinetic Pro — 2D Rigging & Animation for Slot Games",
   description:
     "Standalone 2D skeletal, contour Delaunay mesh, weight-painting, and animation studio with Spine 4.2, Unity C# Runtime, and Flipbook Sprite Sheet export.",
 };

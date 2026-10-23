@@ -12,6 +12,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolveInside } from "../server/safe-paths";
 import path from "node:path";
 import JSZip from "jszip";
 import sharp from "sharp";
@@ -154,7 +155,8 @@ export async function buildCompleteUnityExportBundle(
   const atlasInputs: AtlasInputRegion[] = [];
 
   for (const part of project.parts) {
-    const filePath = path.join(publicRoot, part.src.replace(/^\//, ""));
+    // Part images must live inside public/; a crafted `src` like "../../x" is rejected.
+    const filePath = resolveInside(publicRoot, part.src);
     let rgba: Uint8Array;
     let width = Math.max(16, Math.round(part.w * project.width));
     let height = Math.max(16, Math.round(part.h * project.height));
@@ -226,7 +228,7 @@ export async function buildCompleteUnityExportBundle(
     .toBuffer();
 
   // 2. Generate Spine 4.2 JSON and Unity Custom .sfrig.json
-  const spineDoc = exportSpine42Json(project, { bakeSprings: true, sampleRateHz: 24 });
+  const spineDoc = exportSpine42Json(project, { physics: "native", sampleRateHz: 24 });
   const spineJson = JSON.stringify(spineDoc, null, 2);
   const spineAtlasTxt = atlasLayout.spineAtlasText;
 

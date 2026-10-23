@@ -14,7 +14,7 @@ If you have a character or slot symbol and want it meshed, rigged, animated with
    - Opens the **1-Click Auto Studio** on the left.
    - Kinetic Pro automatically inspects your artwork, infers mass, center of mass (`COM`), and part materials (`heavy metal`, `cloth silk`, `hair plume`, `organic limb`), generates contour Delaunay triangle meshes, solves 4-bone normalized skin weights, and synthesizes **14 famous slot & game animations**.
    - Click any of the **14 Action Cards** (e.g., *Olympus Sky-Bolt Cast*, *Mega Win 30× Slam*, *Payline Symbol Pop*, *Treasure Chest Burst*) to preview it live.
-3. **Step 3 — Click `Export Unity` (or press `⌘E`)**
+3. **Step 3 — Click `Export` (or press `⌘E`)**
    - Generates and previews your 3-way production bundle:
      - **Zero-Dependency Unity C# Runtime** (`<id>.sfrig.json` + `<id>.slotanim.json` + `<id>.png` Atlas)
      - **Spine 4.2 Compatible Bundle** (`<id>.spine.json` + `<id>.atlas.txt` + `<id>.png`)
@@ -32,29 +32,31 @@ Kinetic Pro uses an **iOS 26 / macOS 26 Liquid Glass** spatial layout modeled di
 | **2. Tool Options Bar** | Top Center Bar | Dynamically changes to show the settings for whichever tool is active (just like Photoshop's top options bar). |
 | **3. 1-Click Auto Studio** | Left Floating Dock (in `A` mode) | Visual Physics Learner, Elemental VFX, 2.5D Parallax, Voice Lip-Sync, Slot Stage Choreographer, Batch 8-Symbol Auto-Rigger, 12 Principles Dials, and 14 Game Actions. |
 | **4. Properties & Layers** | Right-Center Floating Dock | **Top half**: Transform (`Angle °`, `ΔX`, `ΔY`), Visual Bezier Curve Graph, and 3D Normal Relight. **Bottom half**: Tabbed **Layers** (with Eye `●` visibility & `↑`/`↓` z-order), **Bones**, and **History** (`⌘Z`). |
-| **5. AI Rigging Copilot** | Extreme-Right Floating Dock | Natural-language agent switcher (**Cursor**, **Claude**, **ChatGPT**, **Grok**) that executes real tool calls on your rig, mesh, weights, and exporter. |
+| **5. AI Rigging Copilot** | Extreme-Right Floating Dock | Natural-language copilot (**Claude** with native tool use, **ChatGPT**, **Grok**, or the offline **Built-in** planner) that runs real tool calls on your rig, mesh, weights, animation and exporter, sees each result, and remembers the conversation. |
 | **6. Video Timeline & Dope Sheet** | Bottom Floating Dock | Play/Pause (`Space`), Clip selector, Time scrubber with `⚡ OnHit` / `✨ SpawnVFX` Unity event flags, `+ Event` button, `Bake Springs`, and expandable multi-bone diamond **Dope Sheet**. |
 
 ---
 
-## 3. Keyboard Shortcuts (Photoshop Standard)
+## 3. Keyboard Shortcuts (Spine Defaults)
 
-| Shortcut | Tool / Action | How to Use on Canvas |
-| :--- | :--- | :--- |
-| **`A`** | **1-Click Auto Studio** | Click any of the 14 Famous Game Actions or 8 Slot Symbols to auto-rig, mesh, and animate immediately. |
-| **`V`** | **Move / Free Transform Pose** | Drag any bone joint to rotate it at the current timestamp (hold `Shift` or drag `root` / `ik-*` handles to translate). Automatically creates a keyframe! |
-| **`P`** | **Bone & IK Pin Tool** | Drag bone joints to adjust their rest **Bind Pivot** positions in setup space. |
-| **`M`** | **Puppet Warp Delaunay Mesh** | Switch between `Low`, `Medium`, and `High` contour triangle density and choose the Auto-Weight Kernel (`Hybrid Capsule`, `Geodesic Heat`, or `Strict Envelopes`). |
-| **`B`** | **Weight Paint Brush** | Paint vertex bone weights directly on the mesh (`Add`, `Subtract`, `Smooth`, `Replace`) while watching the live thermal heatmap. |
-| **`W`** | **Liquify FFD Vertex Sculpt** | Push, Inflate, Pinch, or Restore individual mesh vertices (`Free-Form Deformation`) at the current keyframe. |
-| **`K`** | **Import PSD / Part Slice Knife** | Upload a layered `.psd` or flat `.png`/`.webp` to extract layers, generate circular joint cover rings, and inpaint occluded torso areas. |
-| **`[` / `]`** | **Decrease / Increase Brush Size** | Resizes the Weight Brush (`B`) or Liquify Brush (`W`) radius from `15px` to `180px`. |
-| **`Space`** | **Play / Pause Animation** | Starts or pauses the active timeline clip. |
-| **`⌘Z` / `⇧⌘Z`** | **Undo / Redo** | Steps backward or forward through the **History** stack (up to 25 snapshots). |
-| **`⌘S`** | **Save Project** | Saves `<id>.project.json` to disk (`public/presets/` and `exports/`) and browser `localStorage`. |
-| **`⌘` / `?`** | **Open Interactive User Manual** | Opens the built-in interactive guide with **"Try It Live"** buttons. |
+Kinetic uses [Spine's default hotkeys](https://esotericsoftware.com/spine-cheat-sheet). Press **`?`** in the app for the complete list (generated from `src/core/keymap.ts`).
 
----
+| Shortcut | Action | Notes |
+|---|---|---|
+| **`B` / `C` / `V` / `X`** | **Pose / Rotate / Translate / Scale** | Drag a bone to key it at the current frame. `⇧` snaps rotation to 15°, locks translation to an axis, or scales uniformly. Right-click the canvas to return to the previous tool. |
+| **`N`** | **Bones & IK** (Spine's Create) | Drag bone joints to move their bind pivots; skinned meshes re-weight. |
+| **Arrows** | **Nudge** | 1 px, 1° or 1% with the active tool (`⇧` = 10×). |
+| **`K`** / **`⇧⌘L`** | **Key selection / every bone** | `L` and `⌘L` key the selection too (Kinetic keys whole bones). |
+| **`D` / `A`** | **Play forward / backward** | Press again to stop. `Space` also plays or pauses. |
+| **`Q` / `E`** | **Start / last key** | |
+| **`W` / `S`** | **Next / previous key** | |
+| **`R` / `F`** | **Next / previous frame** | `⇧` jumps 10 frames. `⌘R` toggles looping. |
+| **`H`**, **`+` / `−`** | **Hide layer, draw order** | `⇧+` / `⇧−` move five places. |
+| **`⌘Z` / `⇧⌘Z` / `⌘Y`** | **Undo / Redo** | Up to 100 steps; each drag or brush stroke is one step. |
+| **`⌘S` / `⌘O` / `⌘E`** | **Save / Open / Export** | Saves to `projects/<id>/` with the last 10 versions in `backups/`. |
+| **`O`, `⇧A`, `M`, `⇧W`, `⇧L`** | **Import, Auto Rig, Mesh, Weight Paint, Warp** | Kinetic-only tools. `[` / `]` resize the brush. |
+| **`I`, `⌘K`, `T`, `G`, `Tab`** | **Inspector, Copilot, Dope sheet, Graph, Hide panels** | Kinetic-only panels. |
+| **`F1`**, **`?`** | **Instant tooltips, Help** | |
 
 ## 4. Deep-Dive Feature Guide
 

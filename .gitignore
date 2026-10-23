@@ -9,3 +9,13 @@ unity-verify/Temp/
 unity-verify/Logs/
 unity-verify/Obj/
 .DS_Store
+
+# Build artifacts
+*.tsbuildinfo
+
+# Your saved projects and imports (see README > Projects). Remove this line to version them with git.
+/projects/
+
+# Local secrets (API keys)
+.env
+.env*.local

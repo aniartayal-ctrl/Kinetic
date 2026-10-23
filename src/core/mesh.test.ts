@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { extractAlphaContourUV, generatePartMeshGeometry, simplifyPolygonRDP } from "./mesh";
-import { buildPartMesh, computeAutoWeights, paintMeshWeights } from "./weights";
+import { buildPartMesh, paintMeshWeights } from "./weights";
 import type { SpineForgeProject } from "./schema";
 
 const SAMPLE_PROJECT: Pick<SpineForgeProject, "width" | "height" | "bones"> = {

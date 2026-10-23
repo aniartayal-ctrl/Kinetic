@@ -1,19 +1,20 @@
 "use client";
 
+import { ShortcutsSheet } from "./ShortcutsSheet";
 import { useState } from "react";
-import { useStudioStore } from "@/store/useStudioStore";
+import { useStudioNoTime } from "@/store/useStudioStore";
 
 export function CanvasCoachPill({ onOpenManual }: { onOpenManual: () => void }) {
-  const { mode, selectedBone, selectedPart, brushMode, liquifyMode, brushRadius } = useStudioStore();
+  const { mode, selectedBone, selectedPart, brushMode, liquifyMode, brushRadius } = useStudioNoTime();
 
   const coachMessage: Record<string, string> = {
-    import: "Import PSD & Document Setup (O): Switch presets/skins, upload a layered .psd or flat .png, or pick any of the 8 Slot Symbols on the left.",
-    auto: "1-Click Auto Studio (A): Pick any of the 14 Game Actions or 8 Slot Symbols on the left to auto-mesh, rig, infer physics & animate.",
-    animate: `Pose Tool (V): Drag '${selectedBone}' on the canvas to rotate and auto-keyframe · Hold Shift (or drag root/IK) to move position.`,
-    rig: `Bone Pin Tool (P): Drag '${selectedBone}' pivot on the canvas to adjust its rest bind position · Mesh weights update automatically.`,
-    mesh: `Puppet Mesh (M): Choose Low / Medium / High Delaunay triangle density in the top bar for layer '${selectedPart}'.`,
-    weights: `Weight Brush (B · ${brushMode.toUpperCase()} · ${brushRadius}px): Paint on '${selectedPart}' to bind vertices to bone '${selectedBone}' · Press [ or ] to resize.`,
-    liquify: `Liquify FFD (W · ${liquifyMode.toUpperCase()} · ${brushRadius}px): Drag on '${selectedPart}' to sculpt per-vertex FFD offsets at the current frame.`,
+    import: "Import (O): Switch presets/skins, upload a layered .psd or flat .png, or pick any of the 8 Slot Symbols on the left.",
+    auto: "Auto Rig (⇧A): Pick any of the 14 Game Actions or 8 Slot Symbols on the left to auto-mesh, rig, infer physics & animate.",
+    animate: `Pose (B) · Rotate (C) · Translate (V) · Scale (X): drag '${selectedBone}' to key it at this frame. ⇧ snaps rotation to 15°, locks translate to an axis, or scales uniformly. K keys the selection.`,
+    rig: `Bones & IK (N): Drag '${selectedBone}' pivot on the canvas to adjust its rest bind position · Mesh weights update automatically.`,
+    mesh: `Mesh (M): Choose Low / Medium / High Delaunay triangle density in the top bar for layer '${selectedPart}'.`,
+    weights: `Weight Paint (⇧W · ${brushMode.toUpperCase()} · ${brushRadius}px): Paint on '${selectedPart}' to bind vertices to bone '${selectedBone}' · Press [ or ] to resize.`,
+    liquify: `Warp (⇧L · ${liquifyMode.toUpperCase()} · ${brushRadius}px): Drag on '${selectedPart}' to sculpt per-vertex offsets at the current frame.`,
     export: "Unity & Spine 4.2 Export: Inspect your packed atlas, .sfrig.json, Spine 4.2 JSON, or download the complete .ZIP / .WebM video.",
   };
 
@@ -45,9 +46,9 @@ export function UserManualModal({
     runOneClickAutoRig,
     runAutoModeSelectAction,
     setSlotStageMode,
-    loadSymbolRig,
+    requestDocument,
     setActiveVfx,
-  } = useStudioStore();
+  } = useStudioNoTime();
 
   const [activeTab, setActiveTab] = useState<"quickstart" | "tools" | "slot_suite" | "unity">("quickstart");
 
@@ -79,7 +80,7 @@ export function UserManualModal({
           {(
             [
               { id: "quickstart", label: "1. 30-Second Quick Start (Try Live)" },
-              { id: "tools", label: "2. Photoshop Tools & Shortcuts" },
+              { id: "tools", label: "2. Shortcuts" },
               { id: "slot_suite", label: "3. Slot Game Animation Suite" },
               { id: "unity", label: "4. Unity C# & Spine 4.2 Integration" },
             ] as const
@@ -101,133 +102,105 @@ export function UserManualModal({
           {activeTab === "quickstart" && (
             <div className="space-y-4">
               <p className="text-slate-300">
-                You don&apos;t need any prior Spine experience. Follow these **4 interactive steps**—click any green **"Try It Live"** button below to watch Kinetic Pro perform the step for you immediately:
+                You don&apos;t need any prior Spine experience. Follow these 4 interactive steps—use the button on each step below to watch Kinetic Pro perform the step for you immediately:
               </p>
 
               <div className="grid grid-cols-2 gap-3.5">
-                <div className="p-4 rounded-2xl liquid-glass-well space-y-2 border border-cyan-400/25">
+                <div className="p-4 rounded-2xl liquid-glass-well space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-cyan-300">Step 1 · 1-Click AI Auto-Rig & Physics</span>
+                    <span className="text-xs font-semibold text-[var(--label)]">Step 1 · 1-Click AI Auto-Rig & Physics</span>
                     <button
                       onClick={() => {
                         runOneClickAutoRig();
                         setMode("auto");
                         onClose();
                       }}
-                      className="px-3 py-1 rounded-full bg-emerald-400 text-slate-950 font-bold text-[11px]"
+                      className="btn-primary px-3 py-1 text-[11px]"
                     >
-                      ▶ Try It Live
+                      Try It Live
                     </button>
                   </div>
                   <p className="text-[11px] text-slate-300">
-                    Inspects your character or symbol silhouette, infers mass (`kg`), Center of Mass (`COM`), and part materials (`heavy metal`, `cloth silk`, `hair plume`), builds a contour Delaunay mesh, solves 4-bone weights, and generates **14 famous game animations**.
+                    Inspects your character or symbol silhouette, infers mass (kg), Center of Mass (COM), and part materials (heavy metal, cloth silk, hair plume), builds a contour Delaunay mesh, solves 4-bone weights, and generates 14 famous game animations.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-2xl liquid-glass-well space-y-2 border border-amber-400/25">
+                <div className="p-4 rounded-2xl liquid-glass-well space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-amber-300">Step 2 · Play Famous Game Action</span>
+                    <span className="text-xs font-semibold text-[var(--label)]">Step 2 · Play Famous Game Action</span>
                     <button
                       onClick={() => {
                         runAutoModeSelectAction("zeus-bolt");
                         setActiveVfx("lightning_bolts");
                         onClose();
                       }}
-                      className="px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-bold text-[11px]"
+                      className="btn-primary px-3 py-1 text-[11px]"
                     >
-                      ▶ Try Olympus Bolt
+                      Try Olympus Bolt
                     </button>
                   </div>
                   <p className="text-[11px] text-slate-300">
-                    In **Auto Studio (`A`)**, click any of the **14 built-in action cards** (*Olympus Sky-Bolt Cast*, *Mega Win 30× Slam*, *Whirlwind Cleave*, *Payline Symbol Pop*, *Treasure Chest Burst*) and adjust the **12 Principles of 2D Animation** sliders in real time.
+                    In Auto Rig (⇧A), click any of the 14 built-in action cards (Olympus Sky-Bolt Cast, Mega Win 30× Slam, Whirlwind Cleave, Payline Symbol Pop, Treasure Chest Burst) and adjust the 12 Principles of 2D Animation sliders in real time.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-2xl liquid-glass-well space-y-2 border border-purple-400/25">
+                <div className="p-4 rounded-2xl liquid-glass-well space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-purple-300">Step 3 · Test in 5×3 Slot Stage</span>
+                    <span className="text-xs font-semibold text-[var(--label)]">Step 3 · Test in 5×3 Slot Stage</span>
                     <button
                       onClick={() => {
                         setSlotStageMode("reel_tumble_cascade");
                         onClose();
                       }}
-                      className="px-3 py-1 rounded-full bg-purple-400 text-slate-950 font-bold text-[11px]"
+                      className="btn-primary px-3 py-1 text-[11px]"
                     >
-                      ▶ Try 5×3 Tumble Stage
+                      Try 5×3 Tumble Stage
                     </button>
                   </div>
                   <p className="text-[11px] text-slate-300">
-                    Preview your hero alongside a live **5×3 Tumble / Cascade Reel Grid**, **500× Multiplier Orb Projectile Beam**, **4-Tier Big Win Odometer**, **1×3 Expanding Wild**, or **8-Wedge Bonus Wheel**.
+                    Preview your hero alongside a live 5×3 Tumble / Cascade Reel Grid, 500× Multiplier Orb Projectile Beam, 4-Tier Big Win Odometer, 1×3 Expanding Wild, or 8-Wedge Bonus Wheel.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-2xl liquid-glass-well space-y-2 border border-emerald-400/25">
+                <div className="p-4 rounded-2xl liquid-glass-well space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-300">Step 4 · Ship 3-Way Unity Bundle</span>
+                    <span className="text-xs font-semibold text-[var(--label)]">Step 4 · Ship Export bundle</span>
                     <button
                       onClick={() => {
                         onClose();
                         void onTriggerExport();
                       }}
-                      className="px-3 py-1 rounded-full bg-emerald-400 text-slate-950 font-bold text-[11px]"
+                      className="btn-primary px-3 py-1 text-[11px]"
                     >
-                      ▶ Build Unity Bundle
+                      Build bundle
                     </button>
                   </div>
                   <p className="text-[11px] text-slate-300">
-                    Exports your **Zero-Dependency Unity C# Rig (`.sfrig.json` + `.slotanim.json`)**, **Spine 4.2 (`.json` + `.atlas.txt`)**, and **Baked Flipbook Sprite Sheet (`.sprites.json`)** in one ZIP.
+                    Exports your Zero-Dependency Unity C# Rig (.sfrig.json + .slotanim.json), Spine 4.2 (.json + .atlas.txt), and Baked Flipbook Sprite Sheet (.sprites.json) in one ZIP.
                   </p>
                 </div>
               </div>
             </div>
           )}
 
-          {activeTab === "tools" && (
-            <div className="space-y-3">
-              <p className="text-slate-300">
-                Every tool on the **Far-Left Vertical Tool Rail** uses familiar **Adobe Photoshop** single-key shortcuts:
-              </p>
-              <div className="grid grid-cols-2 gap-2.5">
-                {[
-                  { key: "A", name: "1-Click Auto Studio", desc: "Visual Physics Learner, 12 Principles Dials, Batch 8-Symbol Rigger & 14 Game Actions." },
-                  { key: "V", name: "Move / Free Transform Pose", desc: "Drag any bone on the canvas to rotate and keyframe it. Hold Shift or drag IK handles to translate." },
-                  { key: "P", name: "Bone & IK Pin Tool", desc: "Drag bone joints in setup pose to reposition their bind pivots. Skinned meshes re-weight automatically." },
-                  { key: "M", name: "Puppet Warp Delaunay Mesh", desc: "Switch between Low, Medium, and High contour triangle density and pick the Auto-Weight solver kernel." },
-                  { key: "B", name: "Weight Paint Brush ([ / ])", desc: "Paint Add, Subtract, Smooth, or Replace bone weights directly on vertices with live thermal heatmap." },
-                  { key: "W", name: "Liquify FFD Vertex Sculpt", desc: "Push, Inflate, Pinch, or Restore individual mesh vertices per keyframe for squash/stretch sculpting." },
-                  { key: "K", name: "Import PSD / Part Slice Knife", desc: "Upload a layered .psd or flat .png/.webp to extract layers, joint cover rings, and Telea torso inpainting." },
-                  { key: "⌘Z / ⌘S", name: "History Undo & Project Save", desc: "Step through up to 25 snapshots in the History tab (⌘Z / ⇧⌘Z) or save to disk (⌘S)." },
-                ].map((item) => (
-                  <div key={item.key} className="p-3 rounded-2xl liquid-glass-well flex items-start gap-3">
-                    <span className="px-2.5 py-1 rounded-xl bg-sky-400/20 border border-sky-300/40 font-mono font-bold text-sky-200 shrink-0">
-                      {item.key}
-                    </span>
-                    <div>
-                      <div className="font-bold text-white">{item.name}</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">{item.desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {activeTab === "tools" && <ShortcutsSheet />}
 
           {activeTab === "slot_suite" && (
             <div className="space-y-3.5">
               <p className="text-slate-300">
-                Click any button below to launch that **Slot Game Animation Suite** choreography mode directly on the stage:
+                Click any button below to launch that Slot Game Animation Suite choreography mode directly on the stage:
               </p>
               <div className="grid grid-cols-3 gap-2.5">
                 {[
-                  { label: "⚡ Tumble & 500× Orb Beam", action: () => setSlotStageMode("reel_tumble_cascade") },
-                  { label: "🏆 4-Tier Big Win Odometer", action: () => setSlotStageMode("big_win_ladder") },
+                  { label: "Tumble & 500× Orb Beam", action: () => setSlotStageMode("reel_tumble_cascade") },
+                  { label: "4-Tier Big Win Odometer", action: () => setSlotStageMode("big_win_ladder") },
                   { label: "🃏 1×3 Expanding Wild Reel", action: () => setSlotStageMode("expanding_wild_reel") },
-                  { label: "🎡 Bonus Wheel of Fortune", action: () => setSlotStageMode("bonus_wheel") },
-                  { label: "🔥 2-Scatter Reel Fire", action: () => setSlotStageMode("scatter_anticipation") },
-                  { label: "🪙 Hold & Spin Coins", action: () => setSlotStageMode("hold_and_spin_coins") },
-                  { label: "✨ Feature Splash Banner", action: () => setSlotStageMode("feature_splash") },
-                  { label: "⭐ Rig WILD Symbol", action: () => loadSymbolRig("wild") },
-                  { label: "💎 Rig SCATTER Symbol", action: () => loadSymbolRig("scatter") },
+                  { label: "Bonus Wheel of Fortune", action: () => setSlotStageMode("bonus_wheel") },
+                  { label: "2-Scatter Reel Fire", action: () => setSlotStageMode("scatter_anticipation") },
+                  { label: "Hold & Spin Coins", action: () => setSlotStageMode("hold_and_spin_coins") },
+                  { label: "Feature Splash Banner", action: () => setSlotStageMode("feature_splash") },
+                  { label: "Rig WILD Symbol", action: () => requestDocument({ kind: "symbol", id: "wild", title: "Wild symbol" }) },
+                  { label: "Rig SCATTER Symbol", action: () => requestDocument({ kind: "symbol", id: "scatter", title: "Scatter symbol" }) },
                 ].map((btn, idx) => (
                   <button
                     key={idx}

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { SpineForgeAnimator } from "@/core/animator";
 import { getSlotStageContext } from "@/core/batch-symbols-and-slot-stage";
 import { compute25DParallaxBoneOffsets } from "@/core/parallax-and-lipsync";
-import { RIG_BONE_PALETTE } from "@/core/schema";
+import { patchKeyAt, snapTime, type Channel } from "@/core/keyframes";
+import { RIG_BONE_PALETTE, type TransformKey } from "@/core/schema";
 import {
   BONUS_WHEEL_WEDGES,
   evaluateBigWinChoreography,
@@ -16,7 +17,33 @@ import { applyAffine, buildSkeleton, deformMeshVerticesCPU } from "@/core/solver
 import { evaluateElementalVfx, generateUnity2DColliders } from "@/core/vfx-colliders-profiler";
 import { SpineForgeWebGLRenderer, type GhostFramePass } from "@/core/webgl-renderer";
 import { buildPartMesh, computeVertexHeatmapColors } from "@/core/weights";
-import { useStudioStore } from "@/store/useStudioStore";
+import { useStudioNoTime, useStudioStore } from "@/store/useStudioStore";
+
+const edgeCache = new WeakMap<object, Uint32Array>();
+
+/** Unique triangle edges as vertex index pairs, computed once per mesh object. */
+function uniqueEdges(mesh: object, indices: ArrayLike<number>): Uint32Array {
+  const cached = edgeCache.get(mesh);
+  if (cached) return cached;
+  const seen = new Set<number>();
+  const out: number[] = [];
+  const add = (a: number, b: number) => {
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    const key = lo * 1_000_003 + hi;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(lo, hi);
+  };
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    add(indices[t]!, indices[t + 1]!);
+    add(indices[t + 1]!, indices[t + 2]!);
+    add(indices[t + 2]!, indices[t]!);
+  }
+  const edges = Uint32Array.from(out);
+  edgeCache.set(mesh, edges);
+  return edges;
+}
 
 export function StudioViewport() {
   const {
@@ -25,14 +52,16 @@ export function StudioViewport() {
     selectedBone,
     selectedPart,
     activeClip,
-    currentTime,
     playbackSpeed,
     heatmapSingleBone,
     selectBone,
-    updateBone,
+    previewBone,
     applyWeightBrush,
     applyLiquifyBrush,
-    setBoneKeyframeAtCurrentTime,
+    transformTool,
+    editActiveClip,
+    commitPreview,
+    swapToPreviousTool,
     setCurrentTime,
     setParallaxConfig,
     showSlotStage,
@@ -40,8 +69,10 @@ export function StudioViewport() {
     slotOrientation,
     setSlotStageMode,
     setSlotOrientation,
-    loadSymbolRig,
-  } = useStudioStore();
+    requestDocument,
+  } = useStudioNoTime();
+  // The canvas draws itself every frame; React only needs the playhead for the slot stage overlay.
+  const stageTime = useStudioStore((s) => (s.showSlotStage ? s.currentTime : 0));
 
   const glCanvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -57,6 +88,13 @@ export function StudioViewport() {
     origX: number;
     origY: number;
     origR: number;
+    origSx: number;
+    origSy: number;
+    /** Track and frame at drag start; every move re-derives from these, so drags never accumulate drift. */
+    origTrack: TransformKey[];
+    time: number;
+    lastTool: "rotate" | "translate" | "scale" | "pivot";
+    moved: boolean;
   } | null>(null);
   const isPaintingRef = useRef(false);
   const [loadedProjectId, setLoadedProjectId] = useState<string>("");
@@ -122,12 +160,31 @@ export function StudioViewport() {
   useEffect(() => {
     let rafId = 0;
     let lastNow = performance.now();
+    // Render on demand: while playing, and for a short settle window after any state change or
+    // pointer movement (physics and brush cursors need a few frames). Idle studios stay cool.
+    let lastState: unknown = null;
+    let lastActivity = performance.now();
+    const SETTLE_MS = 1500;
+    const onActivity = () => {
+      lastActivity = performance.now();
+    };
+    window.addEventListener("pointermove", onActivity, { passive: true });
+    window.addEventListener("pointerdown", onActivity, { passive: true });
+    window.addEventListener("resize", onActivity);
 
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - lastNow) / 1000) * playbackSpeed;
       lastNow = now;
 
       const store = useStudioStore.getState();
+      if (store !== lastState) {
+        lastState = store;
+        lastActivity = now;
+      }
+      if (!store.isPlaying && now - lastActivity > SETTLE_MS) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
       const renderer = rendererRef.current;
       const animator = animatorRef.current;
       const ghostAnim = ghostAnimatorRef.current;
@@ -138,7 +195,7 @@ export function StudioViewport() {
         const duration = clip?.duration ?? 2.4;
         let evalTime = store.currentTime;
         if (store.isPlaying && store.mode !== "rig" && store.mode !== "mesh") {
-          evalTime = (store.currentTime + dt) % duration;
+          evalTime = (((store.currentTime + dt * store.playDirection) % duration) + duration) % duration;
           setCurrentTime(evalTime);
         } else if (store.mode === "rig" || store.mode === "mesh") {
           evalTime = 0;
@@ -386,18 +443,16 @@ export function StudioViewport() {
 
             ctx.strokeStyle = isSelectedPart ? "rgba(103, 232, 249, 0.58)" : "rgba(148, 163, 184, 0.18)";
             ctx.lineWidth = isSelectedPart ? 1.25 : 0.75;
+            // Each shared edge once (half the segments of drawing every triangle), cached per mesh.
+            const edges = uniqueEdges(part.mesh, indices);
             ctx.beginPath();
-            for (let t = 0; t < indices.length; t += 3) {
-              const a = indices[t]!;
-              const b = indices[t + 1]!;
-              const c = indices[t + 2]!;
+            for (let e = 0; e < edges.length; e += 2) {
+              const a = edges[e]!;
+              const b = edges[e + 1]!;
               const [ax, ay] = toScreen(deformed[a * 2]!, deformed[a * 2 + 1]!);
               const [bx, by] = toScreen(deformed[b * 2]!, deformed[b * 2 + 1]!);
-              const [cx, cy] = toScreen(deformed[c * 2]!, deformed[c * 2 + 1]!);
               ctx.moveTo(ax, ay);
               ctx.lineTo(bx, by);
-              ctx.lineTo(cx, cy);
-              ctx.closePath();
             }
             ctx.stroke();
 
@@ -523,8 +578,57 @@ export function StudioViewport() {
     };
 
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("pointermove", onActivity);
+      window.removeEventListener("pointerdown", onActivity);
+      window.removeEventListener("resize", onActivity);
+    };
   }, [playbackSpeed, setCurrentTime]);
+
+  // Test hook for scripts/smoke-ui.mjs, only when the page is opened with ?test.
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("test")) return;
+    const w = window as unknown as { __kineticTest?: Record<string, unknown> };
+    w.__kineticTest = {
+      ...w.__kineticTest,
+      boneScreen: (name: string) => {
+        const overlay = overlayCanvasRef.current;
+        const renderer = rendererRef.current;
+        const animator = animatorRef.current;
+        const s = useStudioStore.getState();
+        const idx = s.project.bones.findIndex((b) => b.name === name);
+        if (!overlay || !renderer || !animator || idx < 0) return null;
+        const m = animator.evaluateAt(s.mode === "rig" || s.mode === "mesh" ? 0 : s.currentTime, 0).world[idx]!;
+        const rect = overlay.getBoundingClientRect();
+        const dpr = overlay.width / Math.max(1, rect.width);
+        const { scale, offsetX, offsetY } = renderer.getViewMetrics(overlay.width, overlay.height);
+        return { x: rect.left + (m[4] * scale + offsetX) / dpr, y: rect.top + (m[5] * scale + offsetY) / dpr };
+      },
+      state: () => {
+        const s = useStudioStore.getState();
+        const clip = s.project.animations[s.activeClip];
+        return {
+          mode: s.mode,
+          transformTool: s.transformTool,
+          currentTime: s.currentTime,
+          isPlaying: s.isPlaying,
+          playDirection: s.playDirection,
+          historyIndex: s.historyIndex,
+          fps: clip?.fps ?? 30,
+          loop: clip?.loop ?? false,
+        };
+      },
+      boneKeys: (bone: string) => {
+        const s = useStudioStore.getState();
+        return s.project.animations[s.activeClip]?.boneTracks[bone] ?? [];
+      },
+      project: () => {
+        const p = useStudioStore.getState().project;
+        return { id: p.id, title: p.title, bones: p.bones.length, parts: p.parts.length, clips: Object.keys(p.animations).length };
+      },
+    };
+  }, []);
 
   const eventToRigCoords = (e: ReactPointerEvent<HTMLCanvasElement>): { x: number; y: number } | null => {
     const overlay = overlayCanvasRef.current;
@@ -542,6 +646,7 @@ export function StudioViewport() {
   };
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0) return; // right-click swaps tools (onContextMenu); never start a drag with it
     const pt = eventToRigCoords(e);
     if (!pt) return;
     pointerRigPosRef.current = pt;
@@ -563,6 +668,7 @@ export function StudioViewport() {
 
     const animator = animatorRef.current;
     if (!animator) return;
+    const currentTime = useStudioStore.getState().currentTime;
     const evalTime = mode === "rig" || mode === "mesh" ? 0 : currentTime;
     const frame = animator.evaluateAt(evalTime, 0);
 
@@ -582,6 +688,10 @@ export function StudioViewport() {
       const boneObj = project.bones.find((b) => b.name === closestBone)!;
       const bIdx = project.bones.indexOf(boneObj);
       const pose = frame.poses[bIdx]!;
+      const clip = project.animations[activeClip];
+      // Keys land on whole frames, as in Spine; the playhead jumps to that frame.
+      const keyTime = clip ? snapTime(currentTime, clip.fps || 30, clip.duration) : 0;
+      if (mode === "animate" && clip && Math.abs(keyTime - currentTime) > 1e-4) setCurrentTime(keyTime);
       draggingBoneRef.current = {
         boneName: closestBone,
         startRigX: pt.x,
@@ -589,6 +699,12 @@ export function StudioViewport() {
         origX: mode === "rig" ? boneObj.x : pose.x,
         origY: mode === "rig" ? boneObj.y : pose.y,
         origR: pose.r,
+        origSx: pose.sx,
+        origSy: pose.sy,
+        origTrack: clip?.boneTracks[closestBone] ?? [],
+        time: keyTime,
+        lastTool: mode === "rig" ? "pivot" : "rotate",
+        moved: false,
       };
       e.currentTarget.setPointerCapture(e.pointerId);
     }
@@ -623,28 +739,59 @@ export function StudioViewport() {
     const dx = pt.x - drag.startRigX;
     const dy = pt.y - drag.startRigY;
 
+    if (!drag.moved && Math.hypot(dx, dy) < 2) return;
+
     if (mode === "rig") {
-      updateBone(drag.boneName, {
+      drag.moved = true;
+      previewBone(drag.boneName, {
         x: Number(Math.max(0, Math.min(1, drag.origX + dx / project.width)).toFixed(4)),
         y: Number(Math.max(0, Math.min(1, drag.origY + dy / project.height)).toFixed(4)),
       });
     } else if (mode === "animate") {
-      if (drag.boneName.startsWith("ik-") || drag.boneName === "root" || e.shiftKey) {
-        setBoneKeyframeAtCurrentTime(drag.boneName, {
-          x: Number((drag.origX + dx).toFixed(1)),
-          y: Number((drag.origY + dy).toFixed(1)),
-        });
+      // B (pose): IK targets and root move, other bones rotate, ⇧ moves. C / V / X force one transform,
+      // and ⇧ refines it as in Spine: 15° rotation steps, axis lock, uniform scale.
+      const isPose = transformTool === "pose";
+      const tool: "rotate" | "translate" | "scale" = isPose
+        ? drag.boneName.startsWith("ik-") || drag.boneName === "root" || e.shiftKey
+          ? "translate"
+          : "rotate"
+        : transformTool;
+      const refine = !isPose && e.shiftKey;
+      const patch: Partial<Record<Channel, number>> = {};
+      if (tool === "rotate") {
+        const delta = dx * 0.45;
+        patch.r = drag.origR + (refine ? Math.round(delta / 15) * 15 : delta);
+      } else if (tool === "translate") {
+        const lockY = refine && Math.abs(dx) >= Math.abs(dy);
+        const lockX = refine && !lockY;
+        patch.x = drag.origX + (lockX ? 0 : dx);
+        patch.y = drag.origY + (lockY ? 0 : dy);
       } else {
-        setBoneKeyframeAtCurrentTime(drag.boneName, {
-          r: Number((drag.origR + dx * 0.45).toFixed(2)),
-        });
+        const fx = Math.max(0.01, 1 + dx * 0.005);
+        const fy = refine ? fx : Math.max(0.01, 1 - dy * 0.005);
+        patch.sx = drag.origSx * fx;
+        patch.sy = drag.origSy * fy;
       }
+      drag.moved = true;
+      drag.lastTool = tool;
+      editActiveClip(
+        (c) => ({ ...c, boneTracks: { ...c.boneTracks, [drag.boneName]: patchKeyAt(drag.origTrack, drag.time, patch) } }),
+        null,
+      );
     }
   };
 
   const handlePointerUp = () => {
+    const drag = draggingBoneRef.current;
+    const painted = isPaintingRef.current;
     isPaintingRef.current = false;
     draggingBoneRef.current = null;
+    // One undo step per drag or brush stroke.
+    if (drag?.moved) {
+      const verb = { rotate: "Rotated", translate: "Moved", scale: "Scaled", pivot: "Moved pivot of" }[drag.lastTool];
+      commitPreview(`${verb} ${drag.boneName}`);
+    }
+    if (painted && selectedPart) commitPreview(mode === "weights" ? `Painted weights on ${selectedPart}` : `Warped ${selectedPart}`);
   };
 
   return (
@@ -665,6 +812,10 @@ export function StudioViewport() {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          swapToPreviousTool();
+        }}
         onPointerLeave={() => {
           handlePointerUp();
           setParallaxConfig({ lookX: 0, lookY: 0 });
@@ -686,9 +837,9 @@ export function StudioViewport() {
             const activeStage: SlotSuiteStageMode =
               slotStageMode === "off" ? "reel_tumble_cascade" : slotStageMode;
             const clipDur = Math.max(0.5, project.animations[activeClip]?.duration ?? 2.0);
-            const normProgress = (currentTime % clipDur) / clipDur;
+            const normProgress = (stageTime % clipDur) / clipDur;
             const bigWinFrame = evaluateBigWinChoreography(normProgress, 100, 75);
-            const tumbleFrame = evaluateTumbleCascadeChoreography(project.id, currentTime, 2.0);
+            const tumbleFrame = evaluateTumbleCascadeChoreography(project.id, stageTime, 2.0);
             const wheelFrame = evaluateBonusWheelChoreography(normProgress);
             const baseDir = project.id.includes("solara")
               ? "/presets/sands-of-solara"
@@ -810,7 +961,7 @@ export function StudioViewport() {
                       src={`${baseDir}/title-free.webp`}
                       alt="Free Spins Splash"
                       style={{
-                        transform: `scale(${1 + Math.sin(currentTime * 4) * 0.06})`,
+                        transform: `scale(${1 + Math.sin(stageTime * 4) * 0.06})`,
                       }}
                       className="max-h-28 object-contain drop-shadow-[0_0_24px_rgba(56,189,248,0.65)]"
                     />
@@ -855,7 +1006,7 @@ export function StudioViewport() {
                             return (
                               <button
                                 key={`${cIdx}-${rIdx}`}
-                                onClick={() => loadSymbolRig(sym.role)}
+                                onClick={() => requestDocument({ kind: "symbol", id: sym.role, title: sym.label })}
                                 title={`Click to rig & animate ${sym.label}`}
                                 style={{
                                   transform: `translateY(${cellState.offsetY * 22}px) scale(${cellState.scaleX}, ${cellState.scaleY})`,
